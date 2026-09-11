@@ -9,7 +9,7 @@ def csrf_app(app):
     return app
 
 
-def test_csrf_login_flow(csrf_app, client, admin_user):
+def test_csrf_login_flow(csrf_app, client, admin_staff):
     """预热领取 cookie → 带 X-CSRFToken 头登录成功"""
     # 第一次 GET：after_request 生成 signed token 写入 session 缓存和 cookie
     client.get('/index')
@@ -30,7 +30,7 @@ def test_csrf_login_flow(csrf_app, client, admin_user):
     assert f'csrf_token={token}' in set_cookie, 'cookie 与 session 的 signed token 必须一致'
 
 
-def test_csrf_token_stable_across_requests(csrf_app, client, admin_user):
+def test_csrf_token_stable_across_requests(csrf_app, client, admin_staff):
     """多次请求后 token 保持稳定（并发请求不会因 token 更换而校验失败）"""
     client.get('/index')
     with client.session_transaction() as sess:
@@ -43,7 +43,7 @@ def test_csrf_token_stable_across_requests(csrf_app, client, admin_user):
     assert first == second
 
 
-def test_csrf_wrong_token_rejected(csrf_app, client, admin_user):
+def test_csrf_wrong_token_rejected(csrf_app, client, admin_staff):
     """错误的 token 会被拒绝（400）"""
     client.get('/index')
     resp = client.post('/api/auth',

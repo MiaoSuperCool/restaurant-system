@@ -2,19 +2,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 
-const userStore = useUserStore()
+const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-/** 菜单项：所有角色都有主页面；门店/用户/审计日志仅管理员可见 */
+/** 菜单项：所有角色都有主页面；门店/员工/审计日志仅管理员可见 */
 const menus = computed(() => {
   const base = [{ name: '主页面', path: '/' }]
-  if (userStore.isAdmin) {
+  if (authStore.isAdmin) {
     base.push(
       { name: '门店', path: '/stores' },
-      { name: '用户', path: '/users' },
+      { name: '员工', path: '/staff' },
       { name: '审计日志', path: '/audit' }
     )
   }

@@ -6,11 +6,7 @@
 from marshmallow import Schema, fields, validate
 
 from backend.app.models.store import Store
-
-
-def _one_of(labels: dict):
-    """把模型的 {值: 中文名} 常量转成 OneOf 校验器"""
-    return validate.OneOf(list(labels.keys()), error='{input} 不是合法的取值')
+from backend.app.schemas.validators import one_of
 
 
 class StoreCreateSchema(Schema):
@@ -20,11 +16,11 @@ class StoreCreateSchema(Schema):
         metadata={'description': '门店编码（对接用，创建后慎改，如 S001）'},
     )
     name = fields.Str(required=True, validate=validate.Length(min=1, max=80))
-    store_type = fields.Str(load_default=Store.TYPE_DINE_IN, validate=_one_of(Store.TYPE_LABELS))
+    store_type = fields.Str(load_default=Store.TYPE_DINE_IN, validate=one_of(Store.TYPE_LABELS))
     address = fields.Str(load_default='', validate=validate.Length(max=255))
     phone = fields.Str(load_default='', validate=validate.Length(max=20))
-    business_status = fields.Str(load_default=Store.STATUS_OPEN, validate=_one_of(Store.STATUS_LABELS))
-    run_mode = fields.Str(load_default=Store.MODE_NEW, validate=_one_of(Store.MODE_LABELS))
+    business_status = fields.Str(load_default=Store.STATUS_OPEN, validate=one_of(Store.STATUS_LABELS))
+    run_mode = fields.Str(load_default=Store.MODE_NEW, validate=one_of(Store.MODE_LABELS))
     remark = fields.Str(load_default='', validate=validate.Length(max=255))
 
 
@@ -33,9 +29,9 @@ class StoreUpdateSchema(Schema):
 
     code = fields.Str(validate=validate.Length(min=2, max=32))
     name = fields.Str(validate=validate.Length(min=1, max=80))
-    store_type = fields.Str(validate=_one_of(Store.TYPE_LABELS))
+    store_type = fields.Str(validate=one_of(Store.TYPE_LABELS))
     address = fields.Str(validate=validate.Length(max=255))
     phone = fields.Str(validate=validate.Length(max=20))
-    business_status = fields.Str(validate=_one_of(Store.STATUS_LABELS))
-    run_mode = fields.Str(validate=_one_of(Store.MODE_LABELS))
+    business_status = fields.Str(validate=one_of(Store.STATUS_LABELS))
+    run_mode = fields.Str(validate=one_of(Store.MODE_LABELS))
     remark = fields.Str(validate=validate.Length(max=255))

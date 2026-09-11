@@ -4,7 +4,7 @@ from sqlalchemy import func
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
 from backend.app.models import Store
-from backend.app.services import AuditService
+from backend.app.services.audit_service import AuditService
 
 RESOURCE = 'store'
 
@@ -13,6 +13,10 @@ class StoreService:
     @staticmethod
     def get_all_stores():
         return Store.query.order_by(Store.code).all()
+
+    @staticmethod
+    def get_all_count():
+        return Store.query.count()
 
     @staticmethod
     def get_store_by_id(store_id):

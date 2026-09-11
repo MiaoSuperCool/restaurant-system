@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Sidebar from '@/components/Sidebar.vue'
-import UserCard from '@/components/UserCard.vue'
+import StaffCard from '@/components/StaffCard.vue'
 </script>
 
 <template>
@@ -9,7 +9,7 @@ import UserCard from '@/components/UserCard.vue'
     <main class="content">
       <router-view />
     </main>
-    <UserCard />
+    <StaffCard />
   </div>
 </template>
 

@@ -1,11 +1,11 @@
-"""pytest 公共夹具：测试应用、客户端、测试用户"""
+"""pytest 公共夹具：测试应用、客户端、测试员工账号"""
 import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
 from backend.app import create_app
 from backend.app.extensions import db
-from backend.app.models import User
+from backend.app.models import Staff
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -36,41 +36,41 @@ def client(app):
 
 
 @pytest.fixture
-def admin_user(app):
-    """管理员账号：admin / Admin123!"""
+def admin_staff(app):
+    """超级管理员账号：admin / Admin123!"""
     with app.app_context():
-        user = User(
+        staff = Staff(
             username='admin',
             real_name='管理员',
             email='admin@example.com',
             mobile='13800138000',
             is_admin=True,
         )
-        user.set_password('Admin123!')
-        db.session.add(user)
+        staff.set_password('Admin123!')
+        db.session.add(staff)
         db.session.commit()
         # commit 后对象过期，refresh 一次让属性在脱离 session 后仍可读
-        db.session.refresh(user)
-        return user
+        db.session.refresh(staff)
+        return staff
 
 
 @pytest.fixture
-def normal_user(app):
+def normal_staff(app):
     """普通员工账号：staff / Staff123!"""
     with app.app_context():
-        user = User(
+        staff = Staff(
             username='staff',
             real_name='员工',
             email='staff@example.com',
             mobile='13800138001',
             is_admin=False,
         )
-        user.set_password('Staff123!')
-        db.session.add(user)
+        staff.set_password('Staff123!')
+        db.session.add(staff)
         db.session.commit()
         # commit 后对象过期，refresh 一次让属性在脱离 session 后仍可读
-        db.session.refresh(user)
-        return user
+        db.session.refresh(staff)
+        return staff
 
 
 @pytest.fixture

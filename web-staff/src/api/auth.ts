@@ -1,9 +1,9 @@
 import { request } from './request'
-import type { User } from './types'
+import type { Staff } from './types'
 
 /** 登录接口返回的 data */
 export interface LoginResult {
-  user: User
+  staff: Staff
 }
 
 /** 登录 */

@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 import { getDashboard } from '@/api/main'
 import type { DashboardData } from '@/api/main'
 
-const userStore = useUserStore()
+const authStore = useAuthStore()
 const dashboard = ref<DashboardData | null>(null)
 const loading = ref(false)
 
-const roleText = computed(() => (dashboard.value?.is_admin ? '管理员' : '普通员工'))
+const roleText = computed(() => (dashboard.value?.is_admin ? '超级管理员' : '员工'))
 
 async function loadDashboard() {
   loading.value = true
@@ -26,7 +26,7 @@ onMounted(loadDashboard)
 
 <template>
   <div class="home">
-    <h1 class="welcome">Hello, {{ userStore.user?.username }}</h1>
+    <h1 class="welcome">Hello, {{ authStore.staff?.real_name || authStore.staff?.username }}</h1>
 
     <div v-loading="loading" class="home-body">
       <div class="stats-row">
@@ -35,8 +35,12 @@ onMounted(loadDashboard)
           <p class="value">{{ roleText }}</p>
         </div>
         <div class="card stat-card">
-          <h2>用户总数</h2>
-          <p class="value">{{ dashboard?.user_count ?? 0 }}</p>
+          <h2>门店总数</h2>
+          <p class="value">{{ dashboard?.store_count ?? 0 }}</p>
+        </div>
+        <div class="card stat-card">
+          <h2>员工总数</h2>
+          <p class="value">{{ dashboard?.staff_count ?? 0 }}</p>
         </div>
       </div>
 

@@ -2,17 +2,22 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import type { User } from '@/api/types'
+import type { Staff } from '@/api/types'
 import Sidebar from '@/components/Sidebar.vue'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 
-function makeUser(isAdmin: boolean): User {
+function makeStaff(isAdmin: boolean): Staff {
   return {
     id: isAdmin ? 1 : 2,
     username: isAdmin ? 'admin' : 'staff',
     real_name: isAdmin ? '管理员' : '普通员工',
     email: 'user@example.com',
     mobile: '13800138000',
+    store_id: null,
+    store_name: null,
+    employment_type: 'full_time',
+    employment_type_label: '全职',
+    is_shared: false,
     is_active: true,
     is_admin: isAdmin,
     created_at: null,
@@ -32,9 +37,9 @@ describe('Sidebar 菜单按角色渲染', () => {
     setActivePinia(createPinia())
   })
 
-  it('普通用户只看到"主页面"', async () => {
+  it('普通员工只看到"主页面"', async () => {
     const router = makeRouter()
-    useUserStore().user = makeUser(false)
+    useAuthStore().staff = makeStaff(false)
 
     const wrapper = mount(Sidebar, { global: { plugins: [router] } })
     await router.isReady()
@@ -42,9 +47,9 @@ describe('Sidebar 菜单按角色渲染', () => {
     expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual(['主页面'])
   })
 
-  it('管理员额外看到"门店"、"用户"和"审计日志"', async () => {
+  it('管理员额外看到"门店"、"员工"和"审计日志"', async () => {
     const router = makeRouter()
-    useUserStore().user = makeUser(true)
+    useAuthStore().staff = makeStaff(true)
 
     const wrapper = mount(Sidebar, { global: { plugins: [router] } })
     await router.isReady()
@@ -52,7 +57,7 @@ describe('Sidebar 菜单按角色渲染', () => {
     expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual([
       '主页面',
       '门店',
-      '用户',
+      '员工',
       '审计日志',
     ])
   })

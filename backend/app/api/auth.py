@@ -12,7 +12,9 @@ bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 @bp.response(200, description='登录成功（写入 session cookie），返回当前用户')
 @bp.arguments(LoginSchema, location='json')
 def login(data):
-    """登录：成功后服务端写入 session cookie，后续请求浏览器自动携带
+    """员工登录（内部人员网页端）：成功后服务端写入 session cookie，后续请求浏览器自动携带
+
+    只给员工用。顾客走微信登录，是另一条通道（token），不经过这里。
 
     业务错误约定（全局统一信封 {success, message}）：
     用户不存在 → 404；密码错误 → 401；账号被禁用 → 400；参数校验失败 → 422
@@ -21,15 +23,15 @@ def login(data):
         return jsonify(api_response(
             success=True,
             message='用户已登陆',
-            data={'user': current_user.to_dict()}
+            data={'staff': current_user.to_dict()}
         ))
 
-    user = AuthService.login(data['username'], data['password'])
-    login_user(user, remember=True)
+    staff = AuthService.login(data['username'], data['password'])
+    login_user(staff, remember=True)
     return jsonify(api_response(
         success=True,
         message='登录成功',
-        data={'user': user.to_dict()}
+        data={'staff': staff.to_dict()}
     ))
 
 

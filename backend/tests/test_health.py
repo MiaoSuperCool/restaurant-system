@@ -19,7 +19,7 @@ def test_unknown_api_path_returns_json_404(client):
 
 def test_protected_api_returns_401_json(client):
     """未登录访问受保护接口返回 401 JSON（而不是 302 跳转 HTML）"""
-    resp = client.get('/api/users')
+    resp = client.get('/api/staff')
     assert resp.status_code == 401
     body = resp.get_json()
     assert body['success'] is False

@@ -1,11 +1,12 @@
 import { request } from './request'
-import type { User } from './types'
+import type { Staff } from './types'
 
 /** 首页数据（模板通用：新项目在这里扩展你的首页结构） */
 export interface DashboardData {
-  user: User
+  staff: Staff
   is_admin: boolean
-  user_count: number
+  staff_count: number
+  store_count: number
 }
 
 /**

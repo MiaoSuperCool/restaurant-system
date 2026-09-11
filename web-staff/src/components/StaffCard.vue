@@ -1,27 +1,36 @@
-<!--右侧个人信息卡（圆形头像 + 用户名/角色 + 登出按钮）-->
+<!--右侧个人信息卡（圆形头像 + 姓名/角色 + 登出按钮）-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 
-const userStore = useUserStore()
+const authStore = useAuthStore()
 const router = useRouter()
 
-const roleText = computed(() => (userStore.isAdmin ? '管理员' : '普通员工'))
-const avatarChar = computed(() => userStore.user?.username?.charAt(0).toUpperCase() ?? '?')
+/** 角色文案：门店员工显示门店名，总部账号显示「总部」 */
+const roleText = computed(() => {
+  if (!authStore.staff) return ''
+  if (authStore.isAdmin) return '超级管理员'
+  return authStore.staff.store_name ?? '总部'
+})
+
+const displayName = computed(
+  () => authStore.staff?.real_name || authStore.staff?.username || ''
+)
+const avatarChar = computed(() => displayName.value.charAt(0).toUpperCase() || '?')
 
 async function handleLogout() {
-  await userStore.logout()
+  await authStore.logout()
   router.push('/login')
 }
 </script>
 
 <template>
-  <aside class="user-card">
+  <aside class="staff-card">
     <div class="profile">
       <el-avatar :size="48" class="avatar">{{ avatarChar }}</el-avatar>
       <div class="info">
-        <p class="name">{{ userStore.user?.username }}</p>
+        <p class="name">{{ displayName }}</p>
         <p class="role">{{ roleText }}</p>
       </div>
     </div>
@@ -30,7 +39,7 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-.user-card {
+.staff-card {
   width: 240px;
   flex-shrink: 0;
   padding: 16px;

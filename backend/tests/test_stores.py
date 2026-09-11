@@ -13,7 +13,7 @@ def _create_store(client, **overrides):
     return client.post('/api/stores', json=payload)
 
 
-def test_admin_can_crud_store(client, admin_user, login):
+def test_admin_can_crud_store(client, admin_staff, login):
     login('admin', 'Admin123!')
 
     # 创建：未传的字段用 schema 默认值（营业中 / 新系统）
@@ -52,7 +52,7 @@ def test_login_required(client, app):
     assert resp.status_code == 401
 
 
-def test_non_admin_can_read_but_not_write(client, normal_user, login):
+def test_non_admin_can_read_but_not_write(client, normal_staff, login):
     """普通员工能拉门店列表（各表单要选归属门店），但改不了"""
     login('staff', 'Staff123!')
 
@@ -62,7 +62,7 @@ def test_non_admin_can_read_but_not_write(client, normal_user, login):
     assert _create_store(client).status_code == 403
 
 
-def test_duplicate_code_and_name_rejected(client, admin_user, login):
+def test_duplicate_code_and_name_rejected(client, admin_staff, login):
     login('admin', 'Admin123!')
     _create_store(client)
 
@@ -77,20 +77,20 @@ def test_duplicate_code_and_name_rejected(client, admin_user, login):
     assert '解放路店' in resp.get_json()['message']
 
 
-def test_invalid_enum_rejected(client, admin_user, login):
+def test_invalid_enum_rejected(client, admin_staff, login):
     """store_type / business_status 只接受模型里定义的取值 → 422"""
     login('admin', 'Admin123!')
     assert _create_store(client, store_type='takeaway').status_code == 422
     assert _create_store(client, business_status='sleeping').status_code == 422
 
 
-def test_update_missing_store_404(client, admin_user, login):
+def test_update_missing_store_404(client, admin_staff, login):
     login('admin', 'Admin123!')
     resp = client.put('/api/stores/99999', json={'name': '不存在'})
     assert resp.status_code == 404
 
 
-def test_options_endpoint(client, admin_user, login):
+def test_options_endpoint(client, admin_staff, login):
     """下拉选项：不分页，只带表单需要的字段"""
     login('admin', 'Admin123!')
     _create_store(client)
@@ -103,7 +103,7 @@ def test_options_endpoint(client, admin_user, login):
     assert stores[1]['business_status_label'] == '已停业'
 
 
-def test_store_changes_are_audited(client, admin_user, login):
+def test_store_changes_are_audited(client, admin_staff, login):
     """改门店要留痕，且 resource 标成 store（审计日志覆盖关键动作）"""
     login('admin', 'Admin123!')
     store_id = _create_store(client).get_json()['data']['id']
@@ -119,7 +119,7 @@ def test_store_changes_are_audited(client, admin_user, login):
     assert update_logs[0]['new_value']['name'] == '解放路旗舰店'
 
 
-def test_delete_blocked_when_store_is_referenced(app, client, admin_user, login):
+def test_delete_blocked_when_store_is_referenced(app, client, admin_staff, login):
     """门店一旦被别的表引用就不能删（否则历史数据成孤儿），该走「已停业」
 
     测试用一张临时表模拟订单/员工等关联表——这样不用等那些表真的建出来，
@@ -163,7 +163,7 @@ def test_delete_blocked_when_store_is_referenced(app, client, admin_user, login)
         db.metadata.remove(tmp)
 
 
-def test_unreferenced_store_can_still_be_deleted(client, admin_user, login):
+def test_unreferenced_store_can_still_be_deleted(client, admin_staff, login):
     """没用过的门店（建错了、测试用的）仍然可以真删，不必被迫停业"""
     login('admin', 'Admin123!')
     store_id = _create_store(client).get_json()['data']['id']

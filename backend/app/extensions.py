@@ -36,9 +36,9 @@ login_manager.login_message_category = 'warning'
 # ========== 用户加载器 ==========
 @login_manager.user_loader
 def load_user(user_id):
-    """根据用户ID加载用户对象"""
-    from .models.user import User
-    return db.session.get(User, int(user_id))
+    """根据员工ID加载登录对象（web 端 session 认证用）"""
+    from .models.staff import Staff
+    return db.session.get(Staff, int(user_id))
 
 
 # ========== 未登录处理器 ==========

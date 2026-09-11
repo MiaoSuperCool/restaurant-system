@@ -9,13 +9,13 @@
 | `mp-staff/` | 内部人员小程序端 | 服务员代点单、后厨出单 | uni-app (Vue3 + TS) |
 | `mp-customer/` | 顾客小程序端 | 到店/自取/外卖顾客 | uni-app (Vue3 + TS) |
 
-本项目基于自建的 Flask + Vue3 脚手架模板起步（认证、用户管理、审计日志、黑白灰 UI 已开箱即用），
+本项目基于自建的 Flask + Vue3 脚手架模板起步（认证、账号管理、审计日志、黑白灰 UI 已开箱即用），
 下面是模板自带的说明，其中"前端"均指 `web-staff/`。
 
 ## 内置功能
 
 - 登录/登出（Flask-Login 会话认证 + CSRF 的 SPA 适配）
-- 用户管理（管理员 CRUD、启用/禁用、角色切换）
+- 员工账号管理（管理员 CRUD、启用/禁用、门店归属、用工类型）
 - 审计日志（操作自动记录，管理员可查）
 - 权限控制（后端 `admin_required` 兜底 + 前端路由守卫/菜单过滤）
 - 自动接口文档（flask-smorest：schema 即文档，Swagger UI 在 `/apidocs`）
@@ -31,7 +31,7 @@
 ```
 ├── backend/                  # Flask 后端
 │   ├── app/
-│   │   ├── api/              # 蓝图路由（auth/users/audit/main）
+│   │   ├── api/              # 蓝图路由（auth/staff/stores/audit/main）
 │   │   ├── models/           # SQLAlchemy 模型（BaseModel 带公共时间戳）
 │   │   ├── schemas/          # Marshmallow 输入校验
 │   │   ├── services/         # 业务逻辑 + 审计记录
@@ -44,9 +44,9 @@
 │   └── src/
 │       ├── api/              # axios 封装 + 按领域拆分的接口模块
 │       ├── layouts/          # 三栏主布局
-│       ├── views/            # 页面（Login/Home/Users/Audit）
-│       ├── components/       # Sidebar、UserCard、表单弹窗
-│       ├── stores/           # Pinia（用户状态）
+│       ├── views/            # 页面（Login/Home/Stores/Staff/Audit）
+│       ├── components/       # Sidebar、StaffCard、表单弹窗
+│       ├── stores/           # Pinia（登录态）
 │       └── router/           # 路由 + 登录/角色守卫
 ├── Dockerfile                # 多阶段构建（前端产物 + 后端 gunicorn）
 ├── docker-compose.yml        # MySQL + Redis + 应用 一键启动
@@ -94,7 +94,7 @@ docker compose up -d --build
 自动完成：启动 MySQL/Redis → 迁移建表 → 创建管理员 → gunicorn 托管前后端。
 打开 http://localhost:5000，可用环境变量覆盖默认配置（`DB_PASSWORD`、`SECRET_KEY`、`ADMIN_PASSWORD` 等，见 docker-compose.yml 顶部注释）。
 
-## 添加新业务模块（照"用户管理"示例）
+## 添加新业务模块（照「门店」「员工」示例）
 
 后端：`models/xxx.py` → `schemas/xxx_schema.py`（schema 同时管请求校验和接口文档）→ `services/xxx_service.py` → `api/xxx.py`（flask-smorest Blueprint，请求参数用 `@bp.arguments(Schema, location='json')` 声明）→ 在 `backend/app/__init__.py` 的 `register_blueprints` 里 `api.register_blueprint(xxx.bp)` → `flask db migrate -m "xxx"` 生成迁移
 前端：`api/xxx.ts` → `views/XxxView.vue` → `components/XxxFormDialog.vue` → router 加子路由（管理员页面加 `meta: { requiresAdmin: true }`）+ Sidebar 菜单加一项
@@ -120,7 +120,7 @@ npm run format                      # Prettier 格式化
 
 ## 新项目改名
 
-全局替换三处：前端 `package.json` 的 `name`、前端 `src/stores/user.ts` 的 `USER_STORAGE_KEY`、后端 `.env` 的 `APP_NAME`（前端标题）。包名 `backend` 如需改名，同步修改所有 `backend.app` 导入路径。
+全局替换三处：前端 `package.json` 的 `name`、前端 `src/stores/auth.ts` 的 `STORAGE_KEY`、后端 `.env` 的 `APP_NAME`（前端标题）。包名 `backend` 如需改名，同步修改所有 `backend.app` 导入路径。
 
 ## 注意事项
 

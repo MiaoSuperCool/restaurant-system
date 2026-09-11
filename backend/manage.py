@@ -37,28 +37,28 @@ def cli():
 @click.option('--name', prompt='管理员姓名', default='系统管理员')
 @click.option('--mobile', prompt='管理员手机号', default='13800138000')
 def create_admin(password, username, name, email, mobile):
-    """创建超级管理员"""
+    """创建超级管理员（is_admin=True，绕过权限码检查）"""
     from backend.app import db
-    from backend.app.models.user import User
+    from backend.app.models.staff import Staff
 
-    if User.query.filter_by(mobile=mobile).first():
+    if Staff.query.filter_by(mobile=mobile).first():
         click.echo('❌ 手机号已存在')
         # click.echo输出的信息会显示在命令行（终端）里，它相比与print支持颜色，以及进度条显示
         return
 
     # 检查用户名是否已存在
-    if User.query.filter_by(username=username).first():
+    if Staff.query.filter_by(username=username).first():
         click.echo('❌ 用户名已存在')
         return
 
-    user = User(username=username,
-                real_name=name,
-                email=email,
-                mobile=mobile,
-                is_admin=True,
-                )
-    user.set_password(password)
-    db.session.add(user)
+    staff = Staff(username=username,
+                  real_name=name,
+                  email=email,
+                  mobile=mobile,
+                  is_admin=True,
+                  )
+    staff.set_password(password)
+    db.session.add(staff)
     db.session.commit()
     click.echo(f'✅ 管理员创建成功: {username}')
 

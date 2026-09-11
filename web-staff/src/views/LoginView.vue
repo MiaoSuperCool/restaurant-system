@@ -2,10 +2,10 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
-const userStore = useUserStore()
+const authStore = useAuthStore()
 
 const username = ref('')
 const password = ref('')
@@ -18,7 +18,7 @@ async function handleLogin() {
   }
   loading.value = true
   try {
-    await userStore.login(username.value.trim(), password.value)
+    await authStore.login(username.value.trim(), password.value)
     ElMessage.success('登录成功')
     router.push('/')
   } catch {

@@ -4,14 +4,22 @@
  */
 
 
-/** 用户（对应 user.py；password_hash 属于泄露字段，前端不定义也不使用） */
-export interface User {
+/** 员工账号（对应 staff.py；password_hash 属于泄露字段，前端不定义也不使用） */
+export interface Staff {
   id: number
   username: string
   real_name: string
   email: string
   mobile: string
+  /** 归属门店；总部账号（运营主管/财务/老板）为 null */
+  store_id: number | null
+  store_name: string | null
+  employment_type: string
+  employment_type_label: string
+  /** 公用账号：服务员共用设备登录，下单时要额外记录实际操作人 */
+  is_shared: boolean
   is_active: boolean
+  /** 超级管理员：绕过权限码检查（日常授权走角色） */
   is_admin: boolean
   created_at: string | null
 }
@@ -19,9 +27,9 @@ export interface User {
 /** 审计日志（对应 audit_log.py） */
 export interface AuditLog {
   id: number
-  /** 操作人 id；删除用户后置空（外键 SET NULL） */
-  user_id: number | null
-  user_name: string
+  /** 操作人员工 id；删除员工后置空（外键 SET NULL） */
+  operator_id: number | null
+  operator_name: string
   action: string
   resource: string | null
   datetime: string | null

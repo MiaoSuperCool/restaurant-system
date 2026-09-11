@@ -1,14 +1,17 @@
 from flask_login import current_user
 
 from backend.app import BusinessError
-from backend.app.services import AuditService
-from backend.app.services.user_service import UserService
+
+# 直接导入模块而不是 from backend.app.services import ...：
+# 包 __init__ 里 auth_service 排在 staff_service 之前，走包导入会撞上半初始化的模块
+from backend.app.services.audit_service import AuditService
+from backend.app.services.staff_service import StaffService
 
 
 class AuthService:
     @staticmethod
     def login(username, password):
-        user = UserService.get_user_by_username(username)
+        user = StaffService.get_staff_by_username(username)
         if not user:
             raise BusinessError('用户不存在，请检查输入或先创建', status_code=404)
 
@@ -36,5 +39,3 @@ class AuthService:
             action='Logout',
             status='success'
         )
-
-

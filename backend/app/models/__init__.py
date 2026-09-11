@@ -1,6 +1,6 @@
 from .audit_log import AuditLog
 from .base import BaseModel
+from .staff import Staff
 from .store import Store
-from .user import User
 
-__all__ = ['BaseModel', 'User', 'AuditLog', 'Store']
+__all__ = ['BaseModel', 'Staff', 'AuditLog', 'Store']

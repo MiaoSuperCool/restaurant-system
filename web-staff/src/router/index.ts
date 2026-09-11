@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,9 +19,9 @@ const router = createRouter({
           meta: { requiresAdmin: true },
         },
         {
-          path: 'users',
-          name: 'users',
-          component: () => import('@/views/UsersView.vue'),
+          path: 'staff',
+          name: 'staff',
+          component: () => import('@/views/StaffView.vue'),
           meta: { requiresAdmin: true },
           //meta的作用是给这个路由打上一个标记，说明访问它需要管理员身份，导航守卫就可以可以检测到 requiresAdmin 标记，执行权限校验
         },
@@ -40,16 +40,16 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const userStore = useUserStore()
-  if (!userStore.isLoggedIn && to.name !== 'login') {
+  const authStore = useAuthStore()
+  if (!authStore.isLoggedIn && to.name !== 'login') {
     return { name: 'login' }
   }
-  if (userStore.isLoggedIn && to.name === 'login') {
+  if (authStore.isLoggedIn && to.name === 'login') {
     return { name: 'home' }
   }
   // 路由级角色守卫：非管理员直接输 URL 也进不了管理页面
   // （后端接口同样有 admin_required 兜底，前端只是体验层）
-  if (to.meta.requiresAdmin && !userStore.isAdmin) {
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
     return { name: 'home' }
   }
 })

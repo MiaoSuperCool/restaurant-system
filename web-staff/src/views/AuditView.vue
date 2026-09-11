@@ -14,17 +14,22 @@ const loading = ref(false)
 const detailVisible = ref(false)
 const currentLog = ref<AuditLog | null>(null)
 
-/** 后端存的英文 action → 中文显示 */
+/** 后端存的英文 action → 中文显示（新模块的 action 记得在这里登记） */
 const actionMap: Record<string, string> = {
   Login: '登录',
   Logout: '登出',
-  CREATE_USER: '创建用户',
-  UPDATE_USER: '修改用户',
-  DELETE_USER: '删除用户',
-  BookCreated: '创建图书',
-  BookUpdated: '修改图书',
-  BookDeleted: '删除图书',
-  CreateSaleLog: '录入销售',
+  CREATE_STORE: '创建门店',
+  UPDATE_STORE: '修改门店',
+  DELETE_STORE: '删除门店',
+  CREATE_STAFF: '创建员工',
+  UPDATE_STAFF: '修改员工',
+  DELETE_STAFF: '删除员工',
+}
+
+/** 后端存的 resource → 中文显示 */
+const resourceMap: Record<string, string> = {
+  store: '门店',
+  staff: '员工',
 }
 
 function actionText(action: string): string {
@@ -33,6 +38,11 @@ function actionText(action: string): string {
 
 function statusText(status: string): string {
   return status === 'success' ? '成功' : '失败'
+}
+
+function resourceText(resource: string | null): string {
+  if (!resource) return '—'
+  return resourceMap[resource] ?? resource
 }
 
 async function loadLogs() {
@@ -81,11 +91,13 @@ onMounted(loadLogs)
 
     <div class="table-card">
       <el-table v-loading="loading" :data="logs">
-        <el-table-column prop="user_name" label="操作人" width="120" />
+        <el-table-column prop="operator_name" label="操作人" width="120" />
         <el-table-column label="操作" width="110">
           <template #default="{ row }">{{ actionText(row.action) }}</template>
         </el-table-column>
-        <el-table-column prop="resource" label="对象" width="100" />
+        <el-table-column label="对象" width="100">
+          <template #default="{ row }">{{ resourceText(row.resource) }}</template>
+        </el-table-column>
         <el-table-column prop="datetime" label="时间" />
         <el-table-column label="状态" width="80">
           <template #default="{ row }">{{ statusText(row.status) }}</template>
@@ -112,7 +124,7 @@ onMounted(loadLogs)
     <el-dialog v-model="detailVisible" title="日志详情" width="640px">
       <template v-if="currentLog">
         <div class="detail-meta">
-          <span>{{ currentLog.user_name }} · {{ actionText(currentLog.action) }}</span>
+          <span>{{ currentLog.operator_name }} · {{ actionText(currentLog.action) }}</span>
           <span>{{ currentLog.datetime }}</span>
         </div>
         <h4 class="detail-title">变更前</h4>
