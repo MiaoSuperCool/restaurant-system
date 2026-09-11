@@ -42,7 +42,7 @@ describe('Sidebar 菜单按角色渲染', () => {
     expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual(['主页面'])
   })
 
-  it('管理员额外看到"用户"和"审计日志"', async () => {
+  it('管理员额外看到"门店"、"用户"和"审计日志"', async () => {
     const router = makeRouter()
     useUserStore().user = makeUser(true)
 
@@ -51,6 +51,7 @@ describe('Sidebar 菜单按角色渲染', () => {
 
     expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual([
       '主页面',
+      '门店',
       '用户',
       '审计日志',
     ])

@@ -111,7 +111,7 @@ def register_blueprints(app):
     """注册所有蓝图（flask-smorest 声明式：schema 同时用于校验和 OpenAPI 文档）"""
     from flask_smorest import Api
 
-    from .api import audit, auth, main, users
+    from .api import audit, auth, main, stores, users
 
     # flask-smorest 配置：OpenAPI 3 文档 JSON 挂在 /api/docs/openapi.json
     app.config.setdefault('API_TITLE', f"{app.config.get('APP_NAME', 'Flask API')} API")
@@ -150,6 +150,7 @@ def register_blueprints(app):
     api.register_blueprint(main.bp)   # /index, /health
     api.register_blueprint(users.bp)  # /api/users
     api.register_blueprint(audit.bp)  # /api/audit
+    api.register_blueprint(stores.bp)  # /api/stores
 
     # Swagger UI 页面（依赖已注册的路由，必须放最后）
     register_api_docs(app)

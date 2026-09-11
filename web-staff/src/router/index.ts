@@ -12,6 +12,13 @@ const router = createRouter({
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         {
+          path: 'stores',
+          name: 'stores',
+          component: () => import('@/views/StoresView.vue'),
+          // 门店增删改暂按管理员卡（权限码体系落地后换成 store:manage）
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'users',
           name: 'users',
           component: () => import('@/views/UsersView.vue'),

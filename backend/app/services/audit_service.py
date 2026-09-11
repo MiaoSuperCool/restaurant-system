@@ -38,7 +38,7 @@ class AuditService:
                 .paginate(page=page, per_page=per_page, error_out=False))
 
     @staticmethod
-    def log(operator_id=None, operator_name='', action='',
+    def log(operator_id=None, operator_name='', action='', resource=None,
             old_value=None, new_value=None, status='success'):
         # 审计日志失败不应该影响其他逻辑，所以在 log 方法里一并使用
         # try/except 处理，以免其他调用的地方还要处理
@@ -47,6 +47,7 @@ class AuditService:
                 operator_id=operator_id,
                 operator_name=operator_name,
                 action=action,
+                resource=resource,
                 old_value=old_value,
                 new_value=new_value,
                 status=status

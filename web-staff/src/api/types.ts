@@ -30,6 +30,35 @@ export interface AuditLog {
   new_value: Record<string, unknown> | null
 }
 
+/** 门店（对应 store.py） */
+export interface Store {
+  id: number
+  /** 门店编码：老系统映射、ERP 对接、对账都靠它认店 */
+  code: string
+  name: string
+  store_type: string
+  /** 中文名由后端给（枚举常量定义在 store.py，前端不重复维护一份） */
+  store_type_label: string
+  address: string
+  phone: string
+  business_status: string
+  business_status_label: string
+  run_mode: string
+  run_mode_label: string
+  remark: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 门店下拉选项（/api/stores/options，表单选归属门店用） */
+export interface StoreOption {
+  id: number
+  code: string
+  name: string
+  business_status: string
+  business_status_label: string
+}
+
 /** 标准分页信息 */
 export interface Pagination {
   page: number

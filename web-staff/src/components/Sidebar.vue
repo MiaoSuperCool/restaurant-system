@@ -8,11 +8,12 @@ const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
 
-/** 菜单项：所有角色都有主页面；用户/审计日志仅管理员可见 */
+/** 菜单项：所有角色都有主页面；门店/用户/审计日志仅管理员可见 */
 const menus = computed(() => {
   const base = [{ name: '主页面', path: '/' }]
   if (userStore.isAdmin) {
     base.push(
+      { name: '门店', path: '/stores' },
       { name: '用户', path: '/users' },
       { name: '审计日志', path: '/audit' }
     )
