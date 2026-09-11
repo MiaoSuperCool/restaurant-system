@@ -226,7 +226,7 @@ def register_context_processors(app):
     def inject_global_variables():
         """所有模板都能使用的全局变量"""
         return {
-            'app_name': app.config.get('APP_NAME', '管理系统模板'),
+            'app_name': app.config.get('APP_NAME', '餐饮管理系统'),
             'version': '1.0.0',
             'year': 2026
         }

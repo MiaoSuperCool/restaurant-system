@@ -20,12 +20,12 @@ class Config:
     # Flask
     # 从环境变量中获取密钥，如果环境变量不存在那么就使用后面这个默认值
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')
-    APP_NAME = os.getenv('APP_NAME', '管理系统模板')
+    APP_NAME = os.getenv('APP_NAME', '餐饮管理系统')
 
     # 数据库
     # 模板默认值仅作示例，正式项目请在 backend/.env 中配置真实连接
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'mysql+pymysql://root:password@localhost:3306'
-                                                        '/flask_template')
+                                                        '/restaurant_system')
     # 是否追踪对象变化，设为True会消耗额外内存
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # 数据库连接池大小，避免高并发时连接不够，请求排队

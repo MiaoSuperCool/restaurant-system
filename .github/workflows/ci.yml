@@ -51,4 +51,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 构建 Docker 镜像（多阶段：前端产物 + 后端 gunicorn）
-        run: docker build -t flask-vue3-template:ci .
+        run: docker build -t restaurant-system:ci .

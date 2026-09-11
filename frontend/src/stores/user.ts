@@ -3,7 +3,7 @@ import { login as loginApi, logout as logoutApi } from '@/api/auth'
 import type { User } from '@/api/types'
 
 /** 用户信息在 localStorage 里的 key（新项目可改成自己的前缀，避免多站点冲突） */
-const USER_STORAGE_KEY = 'vue3-template-user'
+const USER_STORAGE_KEY = 'restaurant-system'
 
 /** 从 localStorage 恢复用户（刷新页面不丢登录态） */
 function loadUser(): User | null {

@@ -10,8 +10,8 @@ services:
   db:
     image: mysql:8.0
     # 不自己写Dockerfile，直接用官方现成镜像
-    container_name: flask_db
-    # 给容器起固定名字，方便 docker logs flask_db
+    container_name: restaurant_db
+    # 给容器起固定名字，方便 docker logs restaurant_db
     restart: unless-stopped
     # 容器崩溃/重启docker 时自动拉起（除非你手动停它）
     environment:
@@ -19,7 +19,7 @@ services:
       # 这些变量是 MySQL 官方镜像的约定——它启动时会读这些环境变量来初始化数据库
       # 括号中是compose的变量语法：从宿主机环境变量或 compose 同目录的.env 文件读取 DB_PASSWORD
       # 如果没设置就用 :- 后面的默认值
-      MYSQL_DATABASE: ${DB_NAME:-flask_template}
+      MYSQL_DATABASE: ${DB_NAME:-restaurant_system}
     ports:
       - "3306:3306"  # 可选，方便本地连接调试
     volumes:
@@ -38,7 +38,7 @@ services:
   # ---------- Redis 缓存 ----------
   redis:
     image: redis:7-alpine
-    container_name: flask_redis
+    container_name: restaurant_redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -52,13 +52,13 @@ services:
   app:
     build: .
     # 这个服务不用现成镜像，而是用根目录的 Dockerfile现场构建
-    container_name: flask_app
+    container_name: restaurant_app
     restart: unless-stopped
     ports:
       - "5000:5000"
     environment:
       FLASK_ENV: production
-      DATABASE_URL: mysql+pymysql://root:${DB_PASSWORD:-password}@db:3306/${DB_NAME:-flask_template}
+      DATABASE_URL: mysql+pymysql://root:${DB_PASSWORD:-password}@db:3306/${DB_NAME:-restaurant_system}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me}
       SESSION_COOKIE_SECURE: "false"

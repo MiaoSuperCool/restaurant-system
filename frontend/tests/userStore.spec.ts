@@ -9,7 +9,7 @@ vi.mock('@/api/auth', () => authApi)
 import { useUserStore } from '@/stores/user'
 
 /** localStorage 的 key：故意写成与 stores/user.ts 的常量一致，测试能抓住"key 改了但没同步测试"的漂移 */
-const USER_STORAGE_KEY = 'vue3-template-user'
+const USER_STORAGE_KEY = 'restaurant-system'
 
 function makeUser(isAdmin = false): User {
   return {

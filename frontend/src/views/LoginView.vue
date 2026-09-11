@@ -32,7 +32,7 @@ async function handleLogin() {
 <template>
   <div class="login-page">
     <div class="login-card">
-      <h1 class="login-title">管理系统模板</h1>
+      <h1 class="login-title">餐饮管理系统</h1>
       <p class="login-subtitle">请登录后继续</p>
 
       <el-form label-position="top" @submit.prevent="handleLogin">
