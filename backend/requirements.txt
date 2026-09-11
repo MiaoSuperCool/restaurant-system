@@ -1,0 +1,37 @@
+# ============================================
+# 运行时依赖（生产/开发共用）
+# 说明：
+# - gunicorn（Linux 生产服务器）不支持 Windows，因此不在此列，
+#   Docker 构建时会单独安装（见根目录 Dockerfile）
+# - 测试/代码规范工具见 requirements-dev.txt
+# ============================================
+
+# Web 框架
+Flask==3.0.3
+
+# Flask 扩展
+Flask-Caching==2.3.1
+Flask-Cors==5.0.0
+Flask-Login==0.6.3
+Flask-Migrate==4.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-WTF==1.2.1
+
+# 数据库
+SQLAlchemy==2.0.52
+alembic==1.14.1
+pymysql==1.1.2
+
+# 缓存
+redis==6.1.1
+cachelib==0.14.0
+
+# 参数校验/序列化
+marshmallow==3.22.0
+
+# API 文档（schema 声明式自动生成 OpenAPI 3；flask-swagger-ui 渲染页面）
+flask-smorest==0.44.0
+flask-swagger-ui==5.32.15
+
+# 配置加载（.env）
+python-dotenv==1.0.1

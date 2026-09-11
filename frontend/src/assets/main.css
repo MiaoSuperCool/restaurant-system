@@ -1,0 +1,24 @@
+/* 全局样式：黑白灰基调（Gemini 风格） */
+:root {
+  /* 覆盖 Element Plus 主题变量：主色改黑，全站按钮/选中/焦点统一黑白灰 */
+  --el-color-primary: #1f1f1f;
+  --el-color-primary-light-3: #4d4d4d;
+  --el-color-primary-light-5: #737373;
+  --el-color-primary-light-7: #a6a6a6;
+  --el-color-primary-light-8: #cccccc;
+  --el-color-primary-light-9: #f2f2f2;
+  --el-color-primary-dark-2: #000000;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  background: #fff;
+  color: #1f1f1f;
+}

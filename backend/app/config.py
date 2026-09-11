@@ -1,0 +1,115 @@
+"""
+配置管理：不同环境使用不同的配置
+"""
+import os
+
+from dotenv import load_dotenv
+from sqlalchemy.pool import StaticPool
+
+load_dotenv()
+
+# backend 目录的绝对路径（config.py 位于 backend/app/ 下）
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class Config:
+    """
+    基础配置（所有环境公用）
+    """
+
+    # Flask
+    # 从环境变量中获取密钥，如果环境变量不存在那么就使用后面这个默认值
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')
+    APP_NAME = os.getenv('APP_NAME', '管理系统模板')
+
+    # 数据库
+    # 模板默认值仅作示例，正式项目请在 backend/.env 中配置真实连接
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'mysql+pymysql://root:password@localhost:3306'
+                                                        '/flask_template')
+    # 是否追踪对象变化，设为True会消耗额外内存
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # 数据库连接池大小，避免高并发时连接不够，请求排队
+    SQLALCHEMY_POOL_SIZE = 10
+    # 等待数据库连接的超时时间，避免连接池满了，请求一直等待
+    SQLALCHEMY_POOL_TIMEOUT = 30
+
+    # Redis(缓存)
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+    # 跨域：允许哪些前端来源访问 /api/*（逗号分隔），开发时填 Vite dev server 地址
+    FRONTEND_ORIGINS = [
+        o.strip()
+        for o in os.getenv('FRONTEND_ORIGINS', 'http://localhost:5173').split(',')
+        if o.strip()
+    ]
+
+    # 日志：目录（默认 backend/logs）和级别
+    LOG_DIR = os.getenv('LOG_DIR', os.path.join(BASE_DIR, 'logs'))
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+    # Session
+    # 表示Cookie是否只在HTTPS下传输， 生产环境必须开启，防止中间人攻击
+    # 括号中的false是默认值，当环境变量不存在时使用
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+    # JavaScript能否读取Cookie，开启后防止XSS攻击偷Cookie
+    SESSION_COOKIE_HTTPONLY = True
+    # 防止CSRF跨站攻击，网站之间的请求安全隔离
+    SESSION_COOKIE_SAMESITE = 'Lax'
+
+    # 密码加密强度（2的12次方次计算），数值越高越安全，但登录越慢
+    BCRYPT_ROUNDS = int(os.getenv('BCRYPT_ROUNDS', 12))
+
+    # 管理员初始账号（manage.py create-admin 命令使用）
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'Admin123!')
+    ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+    ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@example.com')
+
+    # 分页
+    DEFAULT_PAGE_SIZE = int(os.getenv('DEFAULT_PAGE_SIZE', 10))
+
+    # API 文档（Swagger UI 页面 /apidocs/ + OpenAPI JSON /api/docs/openapi.json）
+    # 测试环境强制关闭（见 app/__init__.py 的 register_api_docs）；生产如不想对外暴露可置 false
+    ENABLE_API_DOCS = os.getenv('ENABLE_API_DOCS', 'true').lower() == 'true'
+
+
+class DevelopmentConfig(Config):
+    """
+    开发环境配置
+    """
+    DEBUG = True  # 显示错误详情
+    SQLALCHEMY_ECHO = True  # 显示SQL日志
+    # 开发环境使用HTTP就行
+    SESSION_COOKIE_SECURE = False
+    CACHE_TYPE = 'RedisCache'
+    CACHE_REDIS_URL = 'redis://localhost:6379/0'
+    CACHE_DEFAULT_TIMEOUT = 300
+
+
+class ProductionConfig(Config):
+    """
+    生产环境配置
+    """
+    DEBUG = False
+    SQLALCHEMY_ECHO = False
+    # 生产环境强制使用HTTPS
+    SESSION_COOKIE_SECURE = True
+    # 代表“记住我”功能的Cookie是否只在HTTPS下传输
+    REMEMBER_COOKIE_SECURE = True
+
+
+class TestingConfig(Config):
+    """
+    测试环境配置
+    """
+    # 启用测试模式
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    # 测试不依赖 Redis，用进程内缓存
+    CACHE_TYPE = 'SimpleCache'
+    # 内存数据库用 StaticPool 固定单连接，保证 create_all 和请求用同一个库
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'poolclass': StaticPool,
+        'connect_args': {'check_same_thread': False},
+    }
+    # 关闭CSRF保护，每次测试时不用带token
+    WTF_CSRF_ENABLED = False

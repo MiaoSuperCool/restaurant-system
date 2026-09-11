@@ -1,0 +1,89 @@
+# ============================================
+# 一键启动：MySQL + Redis + 应用（含自动迁移和创建管理员）
+# 用法：docker compose up -d --build
+# 常用环境变量（可写进根目录 .env 或直接导出）：
+#   DB_PASSWORD / DB_NAME / SECRET_KEY / ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_EMAIL
+# ============================================
+
+services:
+  # ---------- MySQL 数据库 ----------
+  db:
+    image: mysql:8.0
+    # 不自己写Dockerfile，直接用官方现成镜像
+    container_name: flask_db
+    # 给容器起固定名字，方便 docker logs flask_db
+    restart: unless-stopped
+    # 容器崩溃/重启docker 时自动拉起（除非你手动停它）
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+      # 这些变量是 MySQL 官方镜像的约定——它启动时会读这些环境变量来初始化数据库
+      # 括号中是compose的变量语法：从宿主机环境变量或 compose 同目录的.env 文件读取 DB_PASSWORD
+      # 如果没设置就用 :- 后面的默认值
+      MYSQL_DATABASE: ${DB_NAME:-flask_template}
+    ports:
+      - "3306:3306"  # 可选，方便本地连接调试
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # /var/lib/mysql 是 MySQL 镜像里存数据的目录。如果不用卷，容器一删，整个数据库全没（docker compose
+      #  down 会删容器）。卷是 docker 管理的一块持久存储，挂上去后数据写进宿主机磁盘的卷里
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # 健康检查：compose 定期执行这条命令判断 MySQL是否真正就绪。
+      # MySQL 刚启动时要花几秒初始化，此时连接会失败——健康检查就是给下面 app 的 depends_on用的
+
+
+  # ---------- Redis 缓存 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: flask_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- 应用（后端 + 托管前端） ----------
+  app:
+    build: .
+    # 这个服务不用现成镜像，而是用根目录的 Dockerfile现场构建
+    container_name: flask_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: mysql+pymysql://root:${DB_PASSWORD:-password}@db:3306/${DB_NAME:-flask_template}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      SESSION_COOKIE_SECURE: "false"
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      LOG_DIR: /app/backend/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # "等 db、redis 健康检查通过再启动我"。这就是前面写healthcheck 的意义——没有它，app 可能在 MySQL还没初始化完时就去连，直接崩
+    volumes:
+      - app_logs:/app/backend/logs
+      # 日志目录挂卷，日志不随容器删除而丢失
+    command: >
+      sh -c "flask db upgrade &&
+             python manage.py create-admin --username $${ADMIN_USERNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} &&
+             exec gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app"
+    # command 会覆盖 Dockerfile 里的CMD。启动顺序：迁移建表 → 创建默认管理员 → 启动gunicorn。这是这个项目部署时需要的"开机自检流程"
+
+volumes:
+  mysql_data:
+  redis_data:
+  app_logs:
+# 顶层声明三个命名卷，供上面各服务引用。只写名字没有别的配置——声明即创建，docker 在宿主机找个地方存
+

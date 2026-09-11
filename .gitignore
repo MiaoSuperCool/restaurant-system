@@ -1,0 +1,16 @@
+# 根目录级忽略（backend/.gitignore 负责 backend 内部，frontend/.gitignore 负责前端）
+
+# Python 虚拟环境与缓存
+.venv/
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
+
+# 环境变量（含密钥，永不提交）
+.env
+
+# 日志
+*.log

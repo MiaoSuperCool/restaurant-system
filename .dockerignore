@@ -1,0 +1,18 @@
+# 版本控制
+.git/
+.gitignore
+
+# Python
+.venv/
+**/__pycache__/
+**/*.pyc
+backend/.env
+backend/logs/
+
+# 前端（构建在镜像内完成，本地产物不打包）
+frontend/node_modules/
+frontend/dist/
+
+# 日志与临时文件
+*.log
+.DS_Store

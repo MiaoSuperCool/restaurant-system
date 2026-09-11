@@ -1,0 +1,12 @@
+# ruff 配置：Python 代码规范检查/自动修复
+# 用法：ruff check backend      （检查）
+# ruff check backend --fix （自动修复）
+line-length = 120
+target-version = "py38"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]  # 基础错误 + import 排序 + 语法升级 + 常见 bug
+
+[lint.per-file-ignores]
+# 迁移文件由 Alembic 自动生成，不强制风格
+"backend/migrations/**" = ["E501", "W291"]
