@@ -117,3 +117,54 @@ def test_store_changes_are_audited(client, admin_user, login):
     # 变动前后值都在
     assert update_logs[0]['old_value']['name'] == '解放路店'
     assert update_logs[0]['new_value']['name'] == '解放路旗舰店'
+
+
+def test_delete_blocked_when_store_is_referenced(app, client, admin_user, login):
+    """门店一旦被别的表引用就不能删（否则历史数据成孤儿），该走「已停业」
+
+    测试用一张临时表模拟订单/员工等关联表——这样不用等那些表真的建出来，
+    就能验证「扫外键」这套检查是有效的，而不是一句空跑的代码。
+    """
+    from sqlalchemy import Column, ForeignKey, Integer, Table
+
+    from backend.app.extensions import db
+
+    login('admin', 'Admin123!')
+    store_id = _create_store(client).get_json()['data']['id']
+
+    # 造一张带 store_id 外键的临时表，并让它引用这家门店
+    tmp = Table(
+        '_tmp_store_ref', db.metadata,
+        Column('id', Integer, primary_key=True),
+        Column('store_id', Integer, ForeignKey('store.id')),
+    )
+    try:
+        with app.app_context():
+            tmp.create(db.engine)
+            db.session.execute(tmp.insert().values(store_id=store_id))
+            db.session.commit()
+
+        # 有引用 → 400，且提示改用停业
+        resp = client.delete(f'/api/stores/{store_id}')
+        assert resp.status_code == 400
+        message = resp.get_json()['message']
+        assert '_tmp_store_ref 1 条' in message
+        assert '已停业' in message
+
+        # 引用清掉后就能正常删除
+        with app.app_context():
+            db.session.execute(tmp.delete())
+            db.session.commit()
+        assert client.delete(f'/api/stores/{store_id}').status_code == 200
+    finally:
+        with app.app_context():
+            tmp.drop(db.engine, checkfirst=True)
+        # 从 metadata 摘掉，免得污染后面用例的 create_all
+        db.metadata.remove(tmp)
+
+
+def test_unreferenced_store_can_still_be_deleted(client, admin_user, login):
+    """没用过的门店（建错了、测试用的）仍然可以真删，不必被迫停业"""
+    login('admin', 'Admin123!')
+    store_id = _create_store(client).get_json()['data']['id']
+    assert client.delete(f'/api/stores/{store_id}').status_code == 200

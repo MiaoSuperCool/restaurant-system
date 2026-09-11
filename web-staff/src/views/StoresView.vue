@@ -47,7 +47,8 @@ function openEdit(store: Store) {
 async function handleDelete(store: Store) {
   try {
     await ElMessageBox.confirm(
-      `确定删除门店「${store.name}」吗？该门店的历史数据会失去归属。`,
+      `确定删除门店「${store.name}」吗？\n` +
+        '若该门店已产生订单、员工等业务数据将无法删除，需改为「已停业」。',
       '删除确认',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )

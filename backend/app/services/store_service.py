@@ -1,4 +1,5 @@
 from flask_login import current_user
+from sqlalchemy import func
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
@@ -132,6 +133,44 @@ class StoreService:
 
             raise
 
+    # 引用门店的表的友好名（拼进报错文案给用户看）。
+    # 没登记的表的退回用表名——这样新表加进来不会漏检，只是文案还没那么好读。
+    REFERENCE_LABELS = {
+        'order': '订单',
+        'order_item': '订单明细',
+        'staff': '员工',
+        'store_dish': '门店菜品',
+        'store_inventory': '库存',
+    }
+
+    @staticmethod
+    def get_blocking_references(store_id):
+        """统计所有指向该门店的外键引用，返回 {引用对象: 行数}
+
+        实现方式是扫描 SQLAlchemy metadata 里的全部外键，而不是手写一张检查清单：
+        以后新建订单、员工、门店菜品等表时，只要它们带了指向 store.id 的外键，
+        这里就自动覆盖，不需要回来改代码——手写清单迟早会漏。
+
+        返回空 dict 表示没有任何业务数据引用它，可以安全物理删除。
+        """
+        references = {}
+        for table in db.metadata.tables.values():
+            store_columns = [
+                fk.parent for fk in table.foreign_keys
+                if fk.column.table.name == Store.__tablename__ and fk.column.name == 'id'
+            ]
+            if not store_columns:
+                continue
+
+            count = (db.session.query(func.count())
+                     .select_from(table)
+                     .filter(db.or_(*[column == store_id for column in store_columns]))
+                     .scalar())
+            if count:
+                label = StoreService.REFERENCE_LABELS.get(table.name, table.name)
+                references[label] = references.get(label, 0) + count
+        return references
+
     @staticmethod
     def delete_store(store_id):
         try:
@@ -139,8 +178,19 @@ class StoreService:
             if not store:
                 raise NotFoundError('门店不存在')
 
-            # 门店一旦挂上订单/员工/门店菜品就不能删，否则历史数据成孤儿。
-            # 一期这些表还没建，等建好后在这里加引用检查，届时改用「已停业」软下架。
+            # 门店一旦挂上订单/员工/门店菜品就不能删，否则那些历史数据会变成
+            # 找不到门店的孤儿，对账也就对不上了。这时正确的下线方式是
+            # 把营业状态改成「已停业」（closed），而不是删记录。
+            references = StoreService.get_blocking_references(store_id)
+            if references:
+                detail = '、'.join(
+                    f'{name} {count} 条' for name, count in references.items()
+                )
+                raise BusinessError(
+                    f'门店「{store.name}」还有业务数据（{detail}），不能删除；'
+                    f'如需下线请把营业状态改为「已停业」'
+                )
+
             old_value = store.to_dict()
 
             db.session.delete(store)
