@@ -14,9 +14,11 @@ from backend.app.errors import BusinessError
 from backend.app.extensions import cache, cors, csrf, db, login_manager, migrate
 from backend.app.utils.api_response import api_response
 
-# 前端构建产物目录（backend/app/ 上两级 = 项目根/frontend/dist）
+# 内部人员网页端的构建产物目录（backend/app/ 上两级 = 项目根/web-staff/dist）
+# 注意：这里只管 web-staff 这一个前端；两个小程序端（mp-staff / mp-customer）
+# 由微信客户端直接访问 API，不经过本函数托管
 FRONTEND_DIST = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'frontend', 'dist'
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'web-staff', 'dist'
 )
 
 

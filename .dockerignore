@@ -10,8 +10,10 @@ backend/.env
 backend/logs/
 
 # 前端（构建在镜像内完成，本地产物不打包）
-frontend/node_modules/
-frontend/dist/
+web-staff/node_modules/
+web-staff/dist/
+mp-staff/node_modules/
+mp-customer/node_modules/
 
 # 日志与临时文件
 *.log

@@ -17,7 +17,7 @@ export default defineConfig({
   test: {
     // vitest 配置（npm run test 时生效，不影响 dev/build）
     environment: 'jsdom', // 模拟浏览器环境：localStorage / document 等
-    include: ['tests/**/*.spec.ts'] // 测试文件放在 frontend/tests/（不进 src，避免被 vue-tsc 类型检查）
+    include: ['tests/**/*.spec.ts'] // 测试文件放在 web-staff/tests/（不进 src，避免被 vue-tsc 类型检查）
   },
   server: {
     port: 5173,

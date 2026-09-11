@@ -1,7 +1,16 @@
-# Flask + Vue3 前后端分离脚手架模板
+# 餐饮多门店系统
 
-基于真实项目沉淀的通用后台管理模板：认证、用户管理、审计日志、黑白灰 UI 全套开箱即用。
-新项目从它起步，省去搭骨架时间，专注写业务。
+一套后端 + 三套前端的前后端分离架构：
+
+| 目录 | 端 | 用户 | 技术栈 |
+| --- | --- | --- | --- |
+| `backend/` | 后端 API（一套） | — | Flask 3 / SQLAlchemy / MySQL |
+| `web-staff/` | 内部人员网页端 | 收银员、店长、运营、财务、老板 | Vue3 + TS + Element Plus |
+| `mp-staff/` | 内部人员小程序端 | 服务员代点单、后厨出单 | uni-app (Vue3 + TS) |
+| `mp-customer/` | 顾客小程序端 | 到店/自取/外卖顾客 | uni-app (Vue3 + TS) |
+
+本项目基于自建的 Flask + Vue3 脚手架模板起步（认证、用户管理、审计日志、黑白灰 UI 已开箱即用），
+下面是模板自带的说明，其中"前端"均指 `web-staff/`。
 
 ## 内置功能
 
@@ -31,7 +40,7 @@
 │   ├── migrations/           # Alembic 迁移
 │   ├── manage.py             # CLI：create-admin / reset-db
 │   └── .env.example          # 环境变量模板
-├── frontend/                 # Vue3 前端
+├── web-staff/                # 内部人员网页端（Vue3）
 │   └── src/
 │       ├── api/              # axios 封装 + 按领域拆分的接口模块
 │       ├── layouts/          # 三栏主布局
@@ -50,7 +59,7 @@
    ```bash
    python -m venv .venv && .venv/Scripts/activate   # Windows（Linux/macOS 用 .venv/bin/activate）
    pip install -r backend/requirements.txt
-   cd frontend && npm install
+   cd web-staff && npm install
    ```
 2. 配置环境：`cp backend/.env.example backend/.env`，改 `DATABASE_URL` 的库名/账号密码
 3. 建库：在项目根目录 `python create_db.py`（自动创建 .env 里指定的数据库）
@@ -63,7 +72,7 @@
 5. 启动前后端：
    ```bash
    # 后端（backend 目录）：flask run --debug   （端口 5000）
-   # 前端（frontend 目录）：npm run dev        （端口 5173，代理到 5000）
+   # 网页端（web-staff 目录）：npm run dev      （端口 5173，代理到 5000）
    ```
    浏览器打开 http://localhost:5173
 
@@ -89,7 +98,7 @@ docker compose up -d --build
 
 后端：`models/xxx.py` → `schemas/xxx_schema.py`（schema 同时管请求校验和接口文档）→ `services/xxx_service.py` → `api/xxx.py`（flask-smorest Blueprint，请求参数用 `@bp.arguments(Schema, location='json')` 声明）→ 在 `backend/app/__init__.py` 的 `register_blueprints` 里 `api.register_blueprint(xxx.bp)` → `flask db migrate -m "xxx"` 生成迁移
 前端：`api/xxx.ts` → `views/XxxView.vue` → `components/XxxFormDialog.vue` → router 加子路由（管理员页面加 `meta: { requiresAdmin: true }`）+ Sidebar 菜单加一项
-首页统计：改 `backend/app/api/main.py` 的 `index()` 和 `frontend/src/api/main.ts`
+首页统计：改 `backend/app/api/main.py` 的 `index()` 和 `web-staff/src/api/main.ts`
 
 ## 测试与代码规范
 
@@ -105,7 +114,7 @@ ruff check --fix app tests          # 自动修复
 # 前端
 npm run typecheck                   # 类型检查（vue-tsc）
 npm run lint                        # ESLint 检查
-npm run test                        # 单元测试（vitest：stores/组件逻辑，测试在 frontend/tests/）
+npm run test                        # 单元测试（vitest：stores/组件逻辑，测试在 web-staff/tests/）
 npm run format                      # Prettier 格式化
 ```
 

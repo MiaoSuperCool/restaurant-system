@@ -3,16 +3,16 @@
 # 构建上下文是项目根目录：docker build -t restaurant-system .
 # ============================================
 
-# ---------- 阶段1：构建前端 ----------
-FROM node:20-alpine AS frontend-builder
-# 以 node 官方 20 版的 alpine镜像为起点，给这个阶段起名frontend-builder，供后面引用
-WORKDIR /app/frontend
+# ---------- 阶段1：构建内部人员网页端 ----------
+FROM node:20-alpine AS web-staff-builder
+# 以 node 官方 20 版的 alpine镜像为起点，给这个阶段起名web-staff-builder，供后面引用
+WORKDIR /app/web-staff
 # 接下来都在这个目录下操作，相当于cd，目录不存在会自动创建，之后的 COPY、RUN都以它为相对路径基准
-COPY frontend/package.json frontend/package-lock.json ./
+COPY web-staff/package.json web-staff/package-lock.json ./
 RUN npm ci
 # ci=clean install，它的作用是：在镜像里从零全新安装一遍依赖，保证装出来的结果 100% 可复现、确定
-COPY frontend/ ./
-# 把全部前端源码拷进去，执行 npm run build，产出静态文件到 frontend/dist/
+COPY web-staff/ ./
+# 把全部前端源码拷进去，执行 npm run build，产出静态文件到 web-staff/dist/
 RUN npm run build
 
 # ---------- 阶段2：后端运行环境 ----------
@@ -32,9 +32,9 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # gunicorn 单独装、不进requirements.txt：因为它是生产环境 Web服务器，本地开发用的是 flask run，不需要它。容器是生产形态，所以在这单独装
 
 # 后端代码 + 前端构建产物
-# 前端产物必须放在 /app/frontend/dist（backend/app/__init__.py 的 FRONTEND_DIST 按相对路径计算）
+# 前端产物必须放在 /app/web-staff/dist（backend/app/__init__.py 的 FRONTEND_DIST 按相对路径计算）
 COPY backend/ ./backend/
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY --from=web-staff-builder /app/web-staff/dist ./web-staff/dist
 
 WORKDIR /app/backend
 EXPOSE 5000

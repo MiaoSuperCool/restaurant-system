@@ -1,4 +1,4 @@
-# 根目录级忽略（backend/.gitignore 负责 backend 内部，frontend/.gitignore 负责前端）
+# 根目录级忽略（backend/.gitignore 负责 backend 内部，web-staff/.gitignore 负责网页端）
 
 # Python 虚拟环境与缓存
 .venv/
