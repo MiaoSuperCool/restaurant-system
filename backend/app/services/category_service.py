@@ -30,14 +30,15 @@ class CategoryService:
 
     @staticmethod
     def _next_sort_order():
-        """新建的分类默认排在最后，运营再拖顺序"""
+        """新建的分类默认排在最后，运营再拖顺序
+            意思就是新建时如果调用方没传sort_order，算出「排最后」该是几——当前最大值 + 1"""
         current_max = db.session.query(func.max(Category.sort_order)).scalar()
+        # scalar的作用是将query返回的值拆包成一个python值
         return (current_max or 0) + 1
 
     @staticmethod
     def _resolve_stores(store_ids):
         """门店适用范围：空列表 = 全公司通用（不是「哪家店都不显示」）
-
         「哪家店都不显示」用 is_visible=False 表达，那样更直白。
         """
         if not store_ids:

@@ -265,6 +265,83 @@ def test_price_change_needs_dish_price_edit(app, client, admin_staff, make_staff
     assert client.put(url, json={'price': '18.00'}).status_code == 200
 
 
+def test_category_store_scope_filters_menu(client, admin_staff, login):
+    """分类的「适用门店」要真的过滤菜单，不能只是存着好看
+
+    这个功能曾经是「存了、也显示了，但没生效」——管理界面上写着
+    「适用门店：解放路店」，顾客在别的店照样看得到那些菜。
+    """
+    login('admin', 'Admin123!')
+    store_a = _create_store(client, code='S001', name='解放路店')
+    store_b = _create_store(client, code='S002', name='文化路店')
+
+    # 只在大店卖的「商务套餐」
+    limited = client.post('/api/categories', json={
+        'name': '商务套餐', 'store_ids': [store_a['id']],
+    }).get_json()['data']
+    limited_dish = _create_dish(client, limited['id'], name='商务套餐A', base_price='58.00')
+
+    # 全公司通用的「面食」
+    common = _create_category(client, '面食')
+    common_dish = _create_dish(client, common['id'], name='牛肉面')
+
+    names_a = [r['name'] for r in
+               client.get(f'/api/stores/{store_a["id"]}/menu').get_json()['data']['dishes']]
+    names_b = [r['name'] for r in
+               client.get(f'/api/stores/{store_b["id"]}/menu').get_json()['data']['dishes']]
+
+    # 适用门店里点了名的，两个分类都看得到
+    assert limited_dish['name'] in names_a
+    assert common_dish['name'] in names_a
+
+    # 没点名的店，只有通用分类的菜
+    assert limited_dish['name'] not in names_b
+    assert common_dish['name'] in names_b
+
+
+def test_category_store_scope_filters_public_menu(client, admin_staff, login):
+    """顾客端也要生效——这条规则不该只管内部菜单"""
+    login('admin', 'Admin123!')
+    store_a = _create_store(client, code='S001', name='解放路店')
+    store_b = _create_store(client, code='S002', name='文化路店')
+
+    limited = client.post('/api/categories', json={
+        'name': '限定分类', 'store_ids': [store_a['id']],
+    }).get_json()['data']
+    dish = _create_dish(client, limited['id'], name='限定菜', base_price='10.00')
+
+    names_a = [d['name'] for d in
+               client.get(f'/api/public/stores/{store_a["id"]}/menu').get_json()['data']['dishes']]
+    names_b = [d['name'] for d in
+               client.get(f'/api/public/stores/{store_b["id"]}/menu').get_json()['data']['dishes']]
+
+    assert dish['name'] in names_a
+    assert dish['name'] not in names_b
+
+
+def test_removing_store_scope_makes_category_universal(client, admin_staff, login):
+    """把适用范围改回空数组，分类就恢复成全公司通用"""
+    login('admin', 'Admin123!')
+    store_a = _create_store(client, code='S001', name='解放路店')
+    store_b = _create_store(client, code='S002', name='文化路店')
+
+    category = client.post('/api/categories', json={
+        'name': '临时限定', 'store_ids': [store_a['id']],
+    }).get_json()['data']
+    dish = _create_dish(client, category['id'], name='某道菜', base_price='10.00')
+
+    def visible_at(store):
+        rows = client.get(f'/api/stores/{store["id"]}/menu').get_json()['data']['dishes']
+        return dish['name'] in [r['name'] for r in rows]
+
+    assert visible_at(store_a) is True
+    assert visible_at(store_b) is False
+
+    # 清空适用范围 → 全公司通用
+    client.put(f'/api/categories/{category["id"]}', json={'store_ids': []})
+    assert visible_at(store_b) is True
+
+
 def test_store_dish_changes_are_audited(client, admin_staff, login):
     """调价、上下架属于要留痕的关键动作"""
     login('admin', 'Admin123!')

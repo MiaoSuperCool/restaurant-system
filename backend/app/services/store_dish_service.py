@@ -77,6 +77,19 @@ class StoreDishService:
         """按门店查菜单并合并本店覆盖——内部和顾客端共用的查询"""
         query = Dish.query.filter(Dish.status == Dish.STATUS_ACTIVE)
 
+        # 分类的「适用门店」在这里生效：分类可以只在部分门店出现
+        # （比如「商务套餐」只在大店卖）。
+        # 一行都没指定 = 全公司通用；指定了就只在这些店的菜单里出现。
+        #
+        # 注意这对**内部和顾客端同时生效**——不是只管顾客那边。
+        # 店长的菜单里也不该出现自家不卖的分类。
+        query = query.join(Dish.category).filter(
+            db.or_(
+                ~Category.stores.any(),
+                Category.stores.any(Store.id == store_id),
+            )
+        )
+
         if category_id:
             query = query.filter(Dish.category_id == category_id)
         if search:

@@ -2,7 +2,15 @@
 
 这是别人 clone 下来跑的第一条命令，跑不通就全完了——所以值得有个测试守住。
 """
-from backend.app.demo import DEMO_PASSWORD, seed_demo
+from backend.app.demo import (
+    CATEGORIES,
+    DEMO_PASSWORD,
+    DISHES,
+    ORDERS,
+    STAFF,
+    STORES,
+    seed_demo,
+)
 
 
 def test_seed_demo_runs_end_to_end(app):
@@ -20,16 +28,16 @@ def test_seed_demo_runs_end_to_end(app):
     with app.app_context():
         stats = seed_demo()
 
-        assert stats['stores'] == 6
-        assert stats['dishes'] == 13
-        assert stats['orders'] == 12
-        assert Store.query.count() == 6
-        assert Category.query.count() == 5
-        assert Dish.query.count() == 13
+        assert stats['stores'] == len(STORES)
+        assert stats['dishes'] == len(DISHES)
+        assert stats['orders'] == len(ORDERS)
+        assert Store.query.count() == len(STORES)
+        assert Category.query.count() == len(CATEGORIES)
+        assert Dish.query.count() == len(DISHES)
         # 9 个演示账号（不含 admin，那个不是演示数据建的）
-        assert Staff.query.filter(Staff.username != 'admin').count() == 9
+        assert Staff.query.filter(Staff.username != 'admin').count() == len(STAFF)
         assert StoreDish.query.count() == 6
-        assert Order.query.count() == 12
+        assert Order.query.count() == len(ORDERS)
         assert Payment.query.count() == 7
 
         # 订单状态铺开了，打开页面才能看到「有要处理的单子」
@@ -52,9 +60,9 @@ def test_seed_demo_is_idempotent(app):
         assert second['categories'] == 0
         assert second['dishes'] == 0
         assert second['staff'] == 0
-        assert Store.query.count() == 6
-        assert Dish.query.count() == 13
-        assert Staff.query.filter(Staff.username != 'admin').count() == 9
+        assert Store.query.count() == len(STORES)
+        assert Dish.query.count() == len(DISHES)
+        assert Staff.query.filter(Staff.username != 'admin').count() == len(STAFF)
 
 
 def test_seed_demo_reset_clears_orders(app):
@@ -65,8 +73,8 @@ def test_seed_demo_reset_clears_orders(app):
         seed_demo()
         seed_demo(reset=True)
 
-        assert Order.query.count() == 12          # 不是 24
-        assert Store.query.count() == 6
+        assert Order.query.count() == len(ORDERS)          # 不是 24
+        assert Store.query.count() == len(STORES)
 
 
 def test_demo_accounts_can_login(client, app):
