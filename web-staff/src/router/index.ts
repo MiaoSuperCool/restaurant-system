@@ -27,6 +27,13 @@ const router = createRouter({
           meta: { permissions: ['order:view'] },
         },
         {
+          path: 'refunds',
+          name: 'refunds',
+          component: () => import('@/views/RefundsView.vue'),
+          // 财务、值班经理、店长、老板都能看退款
+          meta: { permissions: ['refund:view'] },
+        },
+        {
           path: 'stores',
           name: 'stores',
           component: () => import('@/views/StoresView.vue'),

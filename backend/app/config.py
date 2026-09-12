@@ -67,6 +67,10 @@ class Config:
     # 分页
     DEFAULT_PAGE_SIZE = int(os.getenv('DEFAULT_PAGE_SIZE', 10))
 
+    # 退款审批限额：超过这个金额的退款需要 refund:approve:large 权限
+    # （值班经理能批限额内的，大额要店长或老板批——设计文档里的角色区分就落在这个数上）
+    REFUND_APPROVE_LIMIT = float(os.getenv('REFUND_APPROVE_LIMIT', '200'))
+
     # API 文档（Swagger UI 页面 /apidocs/ + OpenAPI JSON /api/docs/openapi.json）
     # 测试环境强制关闭（见 app/__init__.py 的 register_api_docs）；生产如不想对外暴露可置 false
     ENABLE_API_DOCS = os.getenv('ENABLE_API_DOCS', 'true').lower() == 'true'

@@ -118,6 +118,7 @@ def register_blueprints(app):
         dishes,
         main,
         orders,
+        refunds,
         roles,
         staff,
         store_menu,
@@ -167,6 +168,7 @@ def register_blueprints(app):
     api.register_blueprint(dishes.bp)  # /api/dishes
     api.register_blueprint(store_menu.bp)  # /api/stores/<id>/menu
     api.register_blueprint(orders.bp)  # /api/orders
+    api.register_blueprint(refunds.bp)  # /api/refunds
 
     # Swagger UI 页面（依赖已注册的路由，必须放最后）
     register_api_docs(app)

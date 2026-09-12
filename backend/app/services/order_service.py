@@ -98,8 +98,10 @@ class OrderService:
         if store_ids is not None:
             base = base.filter(Order.store_id.in_(store_ids))
 
-        # 营业额只算真收到手的钱，取消的单子不算
-        revenue = (db.session.query(func.coalesce(func.sum(Order.paid_amount), 0))
+        # 营业额 = 收到的钱 − 退出去的钱，取消的单子不算。
+        # 只算 paid_amount 的话退过款的单子会把营业额撑高，那个数没法拿去交差
+        revenue = (db.session.query(func.coalesce(
+                       func.sum(Order.paid_amount - Order.refunded_amount), 0))
                    .filter(Order.created_at >= start, Order.created_at < end,
                            Order.status != Order.STATUS_CANCELLED))
         if store_ids is not None:
@@ -331,13 +333,15 @@ class OrderService:
 
         已经收过钱的单子不能直接取消——钱得先退回去。退款走独立的审批单
         （refund），所以这里拦住并说明，避免出现「订单取消了但钱还在我们账上」。
+
+        判断用的是「净收款」而不是 paid_amount：全部退完之后，这单就该能取消了。
         """
         order = OrderService.get_order_or_404(order_id)
         OrderService.assert_in_scope(order)
 
-        if order.paid_amount > 0:
+        if order.refundable_amount > 0:
             raise BusinessError(
-                f'订单已收款 ¥{order.paid_amount:.2f}，不能直接取消；'
+                f'订单还有未退的收款 ¥{order.refundable_amount:.2f}，不能直接取消；'
                 f'请先走退款流程把钱退回去'
             )
 

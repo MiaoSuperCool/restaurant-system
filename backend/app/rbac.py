@@ -145,6 +145,9 @@ ROLES = [
             'menu:view', 'menu:update',
             'dish:price:edit', 'dish:online',
             'stock:manage', 'staff:manage',
+            # 设计文档说「值班经理是受限版店长：大额退款批不了」——
+            # 「批不了大额」正是这两个角色的分界线，所以店长必须有这条
+            'refund:approve:large',
         ],
     },
     {

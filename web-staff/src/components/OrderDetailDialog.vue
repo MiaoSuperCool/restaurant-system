@@ -4,6 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { cancelOrder, collectPayment, getOrder } from '@/api/orders'
 import type { Order } from '@/api/types'
 import { ORDER_STATUS_TAG, PAYMENT_METHOD_OPTIONS } from '@/constants/order'
+import { REFUND_STATUS_TAG } from '@/constants/refund'
+import RefundApplyDialog from '@/components/RefundApplyDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatPrice, formatTime } from '@/utils/format'
 
@@ -19,6 +21,15 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const canCollect = computed(() => authStore.hasPermission('pay:collect'))
+const canRefund = computed(() => authStore.hasPermission('refund:apply'))
+
+/** 还有钱可退才能申请退款 */
+const canApplyRefund = computed(() => {
+  const current = order.value
+  return current !== null && canRefund.value && current.refundable_amount > 0
+})
+
+const refundApplyVisible = ref(false)
 
 // 取消放在详情里而不是列表行上：一行四个按钮太挤，而且取消是低频操作，
 // 值得多点一下看清楚再点
@@ -120,6 +131,12 @@ async function handleCancel() {
   }
 }
 
+/** 退款申请提交后刷新详情：退款记录要立刻显示出来 */
+async function handleRefundApplied() {
+  emit('changed')
+  await load()
+}
+
 function handleClose() {
   emit('update:modelValue', false)
 }
@@ -190,6 +207,9 @@ function handleClose() {
             <span>已收</span>
             <span :class="{ unpaid: remaining > 0 }">{{ formatPrice(order.paid_amount) }}</span>
           </div>
+          <div v-if="order.refunded_amount > 0" class="amount-row refunded">
+            <span>已退</span><span>-{{ formatPrice(order.refunded_amount) }}</span>
+          </div>
           <div v-if="remaining > 0" class="amount-row remaining">
             <span>还差</span><span>{{ formatPrice(remaining) }}</span>
           </div>
@@ -209,6 +229,43 @@ function handleClose() {
           </el-table-column>
         </el-table>
         <p v-else class="muted">还没有收款记录</p>
+
+        <!-- 退款：申请单是流程，退款流水才是钱。批了不等于钱退了 -->
+        <h4 class="section-title">
+          退款记录
+          <el-button
+            v-if="canApplyRefund"
+            link
+            type="primary"
+            class="title-action"
+            @click="refundApplyVisible = true"
+          >
+            申请退款
+          </el-button>
+        </h4>
+        <el-table v-if="order.refunds?.length" :data="order.refunds" size="small" class="detail-table">
+          <el-table-column prop="refund_no" label="退款单号" min-width="200" />
+          <el-table-column label="金额" width="100" align="right">
+            <template #default="{ row }">{{ formatPrice(row.amount) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="130">
+            <template #default="{ row }">
+              <el-tag :type="REFUND_STATUS_TAG[row.status] ?? 'info'" size="small" disable-transitions>
+                {{ row.status_label }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="reason" label="原因" min-width="140" />
+          <el-table-column label="流程" width="150">
+            <template #default="{ row }">
+              <div class="flow-line">{{ row.applicant_name }} 申请</div>
+              <div class="flow-line muted">
+                {{ row.approver_name || '等待审批' }}
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="muted">没有退过款</p>
 
         <!-- 收款 -->
         <template v-if="canSubmitPayment">
@@ -252,6 +309,12 @@ function handleClose() {
       </el-button>
       <el-button @click="handleClose">关闭</el-button>
     </template>
+
+    <RefundApplyDialog
+      v-model="refundApplyVisible"
+      :order="order"
+      @success="handleRefundApplied"
+    />
   </el-dialog>
 </template>
 
@@ -328,6 +391,21 @@ function handleClose() {
 .amount-row.remaining {
   font-weight: 600;
   color: #c45656;
+}
+
+.amount-row.refunded {
+  color: #c45656;
+}
+
+.title-action {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.flow-line {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .collect-row {

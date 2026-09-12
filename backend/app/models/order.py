@@ -83,6 +83,9 @@ class Order(BaseModel):
     discount_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)   # 优惠合计
     payable_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)    # 应付 = 原价 - 优惠
     paid_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)       # 已收（可能分多笔）
+    # 已退。有了它才答得出「这单还能退多少」——退款要校验的可退金额
+    # = paid_amount − refunded_amount，两个数都得留着
+    refunded_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
 
     # ---------- 操作人 ----------
     # 语义是「实际操作人」而不是「登录账号」：
@@ -112,6 +115,16 @@ class Order(BaseModel):
         """钱收够了没有——不是「有没有支付记录」（可能只付了一部分）"""
         return self.paid_amount >= self.payable_amount
 
+    @property
+    def refundable_amount(self):
+        """还能退多少：收到的钱减去已经退掉的"""
+        return self.paid_amount - self.refunded_amount
+
+    @property
+    def net_amount(self):
+        """这单实际留下多少钱。营业收入统计算的是这个，不是 paid_amount"""
+        return self.paid_amount - self.refunded_amount
+
     def can_transition_to(self, status):
         return status in self.STATUS_FLOW.get(self.status, ())
 
@@ -130,6 +143,8 @@ class Order(BaseModel):
             'discount_amount': float(self.discount_amount),
             'payable_amount': float(self.payable_amount),
             'paid_amount': float(self.paid_amount),
+            'refunded_amount': float(self.refunded_amount),
+            'refundable_amount': float(self.refundable_amount),
             'is_paid': self.is_paid,
             'operator_id': self.operator_id,
             'operator_name': self.operator_name,
@@ -139,6 +154,9 @@ class Order(BaseModel):
         if with_items:
             data['items'] = [item.to_dict() for item in self.items]
             data['payments'] = [payment.to_dict() for payment in self.payments]
+            # 退款单也带上：订单详情是「这单发生过什么」的唯一入口，
+            # 收款和退款分开看会很别扭
+            data['refunds'] = [refund.to_dict(with_txns=True) for refund in self.refunds]
         return data
 
 

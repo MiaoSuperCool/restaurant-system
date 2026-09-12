@@ -6,6 +6,7 @@ from .dish_option import DishOption, DishOptionGroup
 from .order import Order, OrderItem, OrderItemOption
 from .payment import Payment
 from .permission import Permission
+from .refund import Refund, RefundTxn
 from .role import Role
 from .staff import Staff
 from .store import Store
@@ -27,4 +28,6 @@ __all__ = [
     'OrderItem',
     'OrderItemOption',
     'Payment',
+    'Refund',
+    'RefundTxn',
 ]

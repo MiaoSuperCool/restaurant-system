@@ -164,6 +164,20 @@ ORDERS = [
 ]
 
 
+DEMO_REFUNDS = [
+    # 挂在第几笔订单上（ORDERS 的下标）、退款比例（1 = 全退）、原因、类型、走到哪一步
+    # 三种状态各留一个，退款页打开就有东西看
+    {'order_index': 5, 'ratio': 0.5, 'reason': '顾客投诉菜品有问题，协商退一半',
+     'type': 'online', 'stage': 'settled'},
+    {'order_index': 9, 'ratio': 1.0, 'reason': '顾客当场退货，已现金退还',
+     'type': 'offline', 'stage': 'settled'},
+    # 这一笔挂在「已完成」的订单上：顾客事后投诉、门店发起部分退款，
+    # 是很常见的情况，也顺便演示「已完成」和「有退款」并不冲突
+    {'order_index': 6, 'ratio': 0.3, 'reason': '上错菜，退差价',
+     'type': 'online', 'stage': 'pending'},
+]
+
+
 # ---------------------------------------------------------------- 执行
 
 def _clear_business_data():
@@ -181,10 +195,12 @@ def _clear_business_data():
         OrderItem,
         OrderItemOption,
         Payment,
+        Refund,
+        RefundTxn,
     )
 
     # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）
-    for model in (OrderItemOption, Payment, OrderItem, Order, AuditLog):
+    for model in (RefundTxn, Refund, OrderItemOption, Payment, OrderItem, Order, AuditLog):
         model.query.delete()
     db.session.commit()
 
@@ -250,6 +266,8 @@ def seed_demo(reset=False):
         DishOptionGroup,
         Order,
         Payment,
+        Refund,
+        RefundTxn,
         Role,
         Staff,
         Store,
@@ -261,7 +279,7 @@ def seed_demo(reset=False):
         _clear_business_data()
 
     stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0,
-             'overrides': 0, 'orders': 0, 'payments': 0}
+             'overrides': 0, 'orders': 0, 'payments': 0, 'refunds': 0}
 
     # ---------- 门店 ----------
     stores_by_code = {}
@@ -419,6 +437,51 @@ def seed_demo(reset=False):
         order.created_at = base_time - timedelta(minutes=(len(ORDERS) - index) * 17)
         _write_demo_audit(order)
         stats['orders'] += 1
+
+    # ---------- 退款单 ----------
+    # 订单是按 ORDERS 的顺序建的，这里按下标找回它们
+    created_orders = (Order.query
+                      .order_by(Order.id)
+                      .all())[-len(ORDERS):] if ORDERS else []
+    for spec in DEMO_REFUNDS:
+        order = created_orders[spec['order_index']]
+        amount = (order.payable_amount * Decimal(str(spec['ratio']))).quantize(Decimal('0.01'))
+        if amount <= 0 or amount > order.refundable_amount:
+            continue
+
+        applicant = staff_by_username.get('shouyin') or staff_by_username.get('laoban')
+        approver = staff_by_username.get('dianzhang') or staff_by_username.get('laoban')
+        refund = Refund(
+            refund_no=f'{order.order_no}-R01',
+            order_id=order.id,
+            amount=amount,
+            reason=spec['reason'],
+            type=spec['type'],
+            applicant_id=applicant.id if applicant else None,
+            applicant_name=(applicant.real_name or applicant.username) if applicant else '',
+        )
+        if spec['stage'] in ('approved', 'settled'):
+            refund.status = Refund.STATUS_APPROVED
+            refund.approver_id = approver.id if approver else None
+            refund.approver_name = (approver.real_name or approver.username) if approver else ''
+            refund.approve_remark = '情况属实'
+            refund.approved_at = base_time
+        if spec['stage'] == 'settled':
+            refund.status = Refund.STATUS_SETTLED
+            refund.txns.append(RefundTxn(
+                order_id=order.id,
+                amount=amount,
+                method=('cash' if spec['type'] == 'offline' else 'original'),
+                transaction_no=('' if spec['type'] == 'offline'
+                                else f'WXREFUND{order.order_no[-4:]}-{spec["order_index"]:02d}'),
+                operator_id=approver.id if approver else None,
+                operator_name=(approver.real_name or approver.username) if approver else '',
+                settled_at=base_time,
+            ))
+            order.refunded_amount = order.refunded_amount + amount
+
+        db.session.add(refund)
+        stats['refunds'] += 1
 
     db.session.commit()
     logger.info('演示数据就绪：%s', stats)

@@ -244,6 +244,46 @@ export interface Payment {
   created_at: string | null
 }
 
+/** 退款流水：钱真的退出去那一刻的记录（对应 refund_txn 表） */
+export interface RefundTxn {
+  id: number
+  refund_id: number
+  order_id: number
+  amount: number
+  method: string
+  method_label: string
+  /** 第三方退款单号（微信退款单号）；现金为空 */
+  transaction_no: string
+  operator_name: string
+  settled_at: string | null
+}
+
+/**
+ * 退款申请单（对应 refund 表）
+ *
+ * 注意它和 RefundTxn 的区别：申请单是**流程**（谁申请、谁批、批没批），
+ * 流水是**钱**（真的退出去那一刻）。**批了不等于钱退了。**
+ */
+export interface Refund {
+  id: number
+  refund_no: string
+  order_id: number
+  order_no: string | null
+  amount: number
+  reason: string
+  type: string
+  type_label: string
+  status: string
+  status_label: string
+  applicant_name: string
+  approver_name: string
+  approve_remark: string
+  approved_at: string | null
+  created_at: string | null
+  /** 只有详情/列表接口带 */
+  txns?: RefundTxn[]
+}
+
 /** 订单（对应 order.py） */
 export interface Order {
   id: number
@@ -260,6 +300,10 @@ export interface Order {
   payable_amount: number
   /** 已收金额；可能分多笔累加 */
   paid_amount: number
+  /** 已退金额 */
+  refunded_amount: number
+  /** 还能退多少 = 已收 − 已退 */
+  refundable_amount: number
   is_paid: boolean
   operator_id: number | null
   /** 实际操作人（公用账号代点单时是选中的那个人，不是账号本身） */
@@ -269,6 +313,7 @@ export interface Order {
   /** 只有详情接口带 */
   items?: OrderItem[]
   payments?: Payment[]
+  refunds?: Refund[]
 }
 
 /** 标准分页信息 */

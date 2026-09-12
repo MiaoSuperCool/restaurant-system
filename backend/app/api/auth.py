@@ -1,5 +1,5 @@
 from flask import jsonify
-from flask_login import current_user, login_required, login_user, logout_user
+from flask_login import login_required, login_user, logout_user
 from flask_smorest import Blueprint
 
 from backend.app.schemas.auth_schema import LoginSchema
@@ -19,13 +19,11 @@ def login(data):
     业务错误约定（全局统一信封 {success, message}）：
     用户不存在 → 404；密码错误 → 401；账号被禁用 → 400；参数校验失败 → 422
     """
-    if current_user.is_authenticated:
-        return jsonify(api_response(
-            success=True,
-            message='用户已登陆',
-            data=AuthService.session_payload(current_user)
-        ))
-
+    # 已登录时也照样校验新凭据并切换身份。
+    #
+    # 模板原来在这里直接返回当前会话，看着像个优化，其实是个坑：
+    # 客户端带着新账号密码调过来，拿到 200 以为登录成功了，实际还是原来那个人。
+    # 表现出来就是「换账号登录静默失败」——写这个项目的测试时踩了两次。
     staff = AuthService.login(data['username'], data['password'])
     login_user(staff, remember=True)
     return jsonify(api_response(
