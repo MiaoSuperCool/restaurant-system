@@ -70,7 +70,11 @@ class StaffService:
 
     @staticmethod
     def _resolve_roles(role_ids):
-        """role_ids → Role 对象列表；有不存在的 id 直接报 404，不静默忽略"""
+        """把 role_ids 解析成 Role 对象列表；有不存在的 id 直接报 404，不静默忽略
+
+        resolve 这个词在编程里基本都是这个意思——把一种引用变成实际的东西，
+        域名解析成 IP、路径解析成绝对路径、id 解析成实体。
+        """
         if not role_ids:
             return []
         roles = Role.query.filter(Role.id.in_(role_ids)).all()

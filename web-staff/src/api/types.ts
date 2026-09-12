@@ -101,6 +101,68 @@ export interface StoreOption {
   business_status_label: string
 }
 
+/** 菜品分类（对应 category.py） */
+export interface Category {
+  id: number
+  name: string
+  /** 图标：emoji 或图片地址 */
+  icon: string
+  is_visible: boolean
+  sort_order: number
+  store_ids: number[]
+  store_names: string[]
+  /** 没指定门店 = 全公司通用 */
+  is_all_stores: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 分类下拉选项（/api/categories/options） */
+export interface CategoryOption {
+  id: number
+  name: string
+  icon: string
+}
+
+/** 规格选项（大份 / 微辣 / 加蛋） */
+export interface DishOption {
+  id: number
+  name: string
+  /** 附加价；0 是有意义的取值（微辣和特辣同价） */
+  extra_price: number
+  sort_order: number
+}
+
+/** 规格组（份量 / 辣度 / 加料） */
+export interface DishOptionGroup {
+  id: number
+  name: string
+  selection_type: string
+  selection_type_label: string
+  /** 必选：单选组必选 = 必须选一个；多选组必选 = 至少要选一个 */
+  is_required: boolean
+  sort_order: number
+  options: DishOption[]
+}
+
+/** 菜品（对应 dish.py） */
+export interface Dish {
+  id: number
+  category_id: number
+  category_name: string | null
+  name: string
+  image: string
+  description: string
+  base_price: number
+  status: string
+  status_label: string
+  sort_order: number
+  created_at: string | null
+  updated_at: string | null
+  /** 只有详情接口带（列表太重不带） */
+  option_groups?: DishOptionGroup[]
+}
+
 /** 标准分页信息 */
 export interface Pagination {
   page: number

@@ -29,6 +29,7 @@ PERMISSIONS = [
     ('system:config', '系统配置', '组织与账号'),
 
     # 菜单与菜品
+    ('menu:view', '菜单查看', '菜单与菜品'),
     ('menu:create', '新增菜品', '菜单与菜品'),
     ('menu:update', '修改菜品', '菜单与菜品'),
     ('menu:delete', '删除菜品', '菜单与菜品'),
@@ -84,12 +85,17 @@ def permission_name(code):
 
 
 # ---------- 预置角色 ----------
+# 角色是不同权限的集合
 # data_scope：store = 只能碰本店数据，all = 6 家店都能碰。
+
+# 一线员工看菜单是干活的前提（点单、出单都要先看菜），所以前厅后厨都给 menu:view
+_FRONT_LINE_MENU = ['menu:view']
 
 # 收银员的权限集合，值班经理是它的超集，抽出来避免两处各写一遍
 _CASHIER_PERMISSIONS = [
     'order:create', 'order:receive', 'order:view',
     'pay:collect', 'coupon:verify', 'member:balance:view', 'refund:apply',
+    *_FRONT_LINE_MENU,
 ]
 
 ROLES = [
@@ -98,14 +104,14 @@ ROLES = [
         'name': '服务员',
         'description': '代客点单，看本店订单',
         'data_scope': 'store',
-        'permissions': ['order:create', 'order:view'],
+        'permissions': ['order:create', 'order:view', *_FRONT_LINE_MENU],
     },
     {
         'code': 'kitchen',
         'name': '后厨',
         'description': '本店出单',
         'data_scope': 'store',
-        'permissions': ['order:view'],
+        'permissions': ['order:view', *_FRONT_LINE_MENU],
     },
     {
         'code': 'cashier',
@@ -131,7 +137,7 @@ ROLES = [
         'data_scope': 'store',
         'permissions': [
             'store:view', 'order:view', 'refund:apply', 'refund:approve', 'refund:view',
-            'menu:update', 'dish:price:edit', 'dish:online',
+            'menu:view', 'menu:update', 'dish:price:edit', 'dish:online',
             'report:store', 'stock:view', 'stock:manage',
             'staff:manage', 'schedule:manage',
         ],
@@ -143,7 +149,7 @@ ROLES = [
         'data_scope': 'all',
         'permissions': [
             'store:view',
-            'menu:create', 'menu:update', 'menu:delete',
+            'menu:view', 'menu:create', 'menu:update', 'menu:delete',
             'dish:price:edit', 'dish:online',
             'campaign:manage', 'coupon:issue', 'coupon:manage',
             'member:view', 'member:manage',

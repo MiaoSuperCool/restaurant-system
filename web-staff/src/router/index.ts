@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { MENU_MANAGE_PERMISSIONS } from '@/constants/menu'
 import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
@@ -18,6 +19,18 @@ const router = createRouter({
           // 权限码要和后端的 @permission_required 一致；数组 = 任一即可
           // 这里是「看得到页面」的门槛，页面内的增删改按钮另有更严的权限
           meta: { permissions: ['store:view'] },
+        },
+        {
+          path: 'dishes',
+          name: 'dishes',
+          component: () => import('@/views/DishesView.vue'),
+          meta: { permissions: MENU_MANAGE_PERMISSIONS },
+        },
+        {
+          path: 'categories',
+          name: 'categories',
+          component: () => import('@/views/CategoriesView.vue'),
+          meta: { permissions: MENU_MANAGE_PERMISSIONS },
         },
         {
           path: 'staff',

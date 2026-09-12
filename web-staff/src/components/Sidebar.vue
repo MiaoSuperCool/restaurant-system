@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { MENU_MANAGE_PERMISSIONS } from '@/constants/menu'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -16,6 +17,8 @@ const router = useRouter()
 const ALL_MENUS = [
   { name: '主页面', path: '/', permissions: [] as string[] },
   { name: '门店', path: '/stores', permissions: ['store:view'] },
+  { name: '菜品', path: '/dishes', permissions: MENU_MANAGE_PERMISSIONS },
+  { name: '分类', path: '/categories', permissions: MENU_MANAGE_PERMISSIONS },
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
   { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
 ]
