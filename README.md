@@ -33,8 +33,12 @@ flask seed-demo                        # 6 家门店、13 道菜、9 个账号�
 
 # 4. 起服务
 flask run --debug                      # 后端 :5000
-cd ../web-staff && npm install && npm run dev   # 前端 :5173
+cd ../web-staff && npm install && npm run dev   # 内部人员网页端 :5173
+cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版）:5174
 ```
+
+> 顾客小程序端的详细说明（怎么用微信开发者工具打开、真机预览要改什么）
+> 见 [mp-customer/README.md](mp-customer/README.md)。
 
 浏览器打开 http://localhost:5173，用下面的账号登录。接口文档在 http://localhost:5000/apidocs/。
 
@@ -87,6 +91,13 @@ cd ../web-staff && npm install && npm run dev   # 前端 :5173
 - **打小票** —— 80mm 热敏纸版式的预结单/小票，可直接调起浏览器打印
 
 <img src="docs/screenshots/receipt.png" width="420" alt="小票" />
+
+- **顾客小程序** —— 扫码进店 → 浏览菜单 → 选规格 → 下单 → 支付 → 查订单，
+  **全程不需要登录**（会员是二期）。uni-app 一套代码编译到微信小程序 + H5。
+  查订单要「单号 + 随机令牌」——单号是可读可猜的，光凭单号能查到别人的订单
+
+<img src="docs/screenshots/mp-menu.png" width="300" alt="小程序点单" />
+<img src="docs/screenshots/mp-picker.png" width="300" alt="规格选择" />
 - **审计日志** —— 改价、上下架、发券、开停账号等关键动作自动留痕，含变更前后值
 - **角色权限矩阵** —— 8 个角色 × 37 个权限码的全貌，一眼看出谁能在哪些门店做什么
 
@@ -199,13 +210,18 @@ restaurant-system/
 │   │   └── utils/         # 统一响应、权限装饰器、外键引用检查
 │   ├── migrations/        # Alembic 迁移
 │   └── tests/             # pytest（96 个）
-├── web-staff/             # 内部人员网页端
+├── web-staff/             # 内部人员网页端（Vue3）
 │   └── src/
 │       ├── api/           # axios 封装 + 按领域拆分的接口模块
 │       ├── views/         # 页面
 │       ├── components/    # 表单弹窗、详情弹窗
 │       ├── stores/auth.ts # 登录态 + 权限
 │       └── constants/     # 枚举选项（与后端模型常量一一对应）
+├── mp-customer/           # 顾客小程序端（uni-app，编译到微信小程序 + H5）
+│   └── src/
+│       ├── api/           # uni.request 封装 + 顾客端接口
+│       ├── pages/         # 选门店 / 点单 / 我的订单 / 订单详情
+│       ├── stores/        # 购物车、本地订单记录（没用 Pinia，模块级 reactive 够）
 ├── docs/                  # 需求与设计文档
 └── docker-compose.yml     # MySQL + Redis + 应用一键起
 ```
@@ -221,7 +237,8 @@ restaurant-system/
 | **会员 / 储值 / 积分 / 优惠券** | 二期范围，未开始。订单里已经预留了 `member_id` 字段但没加外键 |
 | **退款的「打款」这一步** | 流程走通了（申请→审批→确认打款→记流水），但确认打款目前只是记账，没有真的调微信退款接口 |
 | **ERP 对接 / 老系统数据迁移** | 属于二~四期，且不存在真实系统可对接 |
-| **顾客小程序 / 员工小程序** | 未开始。目前只有内部人员网页端 |
+| **顾客小程序的支付** | 「立即支付」只是把「钱付了」记下来，流水号带 `MOCK` 前缀。**协议层已经写好并测过**（签名/验签/AES 解密 + 自建模拟网关），差的是接到业务流程里和一个真商户号 |
+| **员工小程序** | 未开始（二期）。服务员代点单、后厨出单在网页端已经能用，小程序只是更顺手 |
 
 ## 开发
 
