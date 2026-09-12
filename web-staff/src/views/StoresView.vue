@@ -111,11 +111,23 @@ onMounted(loadStores)
 
     <div class="table-card">
       <el-table v-loading="loading" :data="stores">
-        <el-table-column prop="code" label="编码" width="90" />
-        <el-table-column prop="name" label="门店名称" min-width="140" />
-        <el-table-column prop="store_type_label" label="类型" width="100" />
-        <el-table-column prop="address" label="地址" min-width="180" />
-        <el-table-column prop="phone" label="电话" width="130" />
+        <!-- 列宽是算过的，内容区实际只有 892px
+             （1440 − 侧边栏 200 − 用户卡 240 − 页面和卡片内边距 72）。
+             超了不会出现滚动条，而是 fixed 的操作列盖住「运行模式」列。
+             所以把编码并进名称、电话并进地址，各做成下面一行小字 -->
+        <el-table-column label="门店" min-width="160">
+          <template #default="{ row }">
+            <div class="store-name">{{ row.name }}</div>
+            <div class="store-sub">{{ row.code }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="store_type_label" label="类型" width="95" />
+        <el-table-column label="地址" min-width="200">
+          <template #default="{ row }">
+            <div>{{ row.address || '—' }}</div>
+            <div v-if="row.phone" class="store-sub">{{ row.phone }}</div>
+          </template>
+        </el-table-column>
         <el-table-column label="营业状态" width="100">
           <template #default="{ row }">
             <el-tag :type="BUSINESS_STATUS_TAG[row.business_status] ?? 'info'" disable-transitions>
@@ -181,6 +193,19 @@ onMounted(loadStores)
   --el-table-header-bg-color: transparent;
   --el-table-row-hover-bg-color: #ebebeb;
   --el-table-border-color: #e2e2e2;
+}
+
+.store-name {
+  font-weight: 600;
+  color: #1f1f1f;
+  line-height: 1.4;
+}
+
+/* 编码和电话做成下面一行小字：它们是次要信息，单独占一列会把表格挤爆 */
+.store-sub {
+  font-size: 12px;
+  color: #a0a0a0;
+  line-height: 1.4;
 }
 
 .add-btn {

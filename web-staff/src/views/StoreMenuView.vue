@@ -158,8 +158,9 @@ onMounted(async () => {
     </div>
 
     <p class="hint">
-      这里的价格和上下架只影响选中的这家店，不会动到全公司的基础价。
-      没做过特殊设置的菜直接沿用基础价、默认上架、不限量。
+      <strong>价格、上架、每日限量直接在格子里改</strong>，改完自动保存，不需要点「编辑」。
+      这里的设置只影响选中的这家店，不会动到全公司的基础价；
+      没做过特殊设置的菜直接沿用基础价、默认上架、不限量（所以操作列大多是空的）。
     </p>
 
     <div class="table-card">
@@ -219,6 +220,9 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="操作" width="110" fixed="right">
           <template #default="{ row }">
+            <!-- 这一列大多数时候是空的：价格/上架/限量都是直接在格子里改的，
+                 不需要「编辑」按钮。只有改过默认值的行才多一个恢复入口。
+                 空着不写东西看起来像渲染坏了，所以给个占位符 -->
             <el-button
               v-if="row.has_override"
               size="small"
@@ -227,6 +231,7 @@ onMounted(async () => {
             >
               恢复默认
             </el-button>
+            <span v-else class="muted">—</span>
           </template>
         </el-table-column>
       </el-table>
@@ -282,6 +287,10 @@ onMounted(async () => {
 
 .override-tag {
   margin-left: 6px;
+}
+
+.muted {
+  color: #c0c0c0;
 }
 
 /* 本店价和基础价不同时，把基础价划掉，一眼看出改过 */
