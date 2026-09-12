@@ -24,6 +24,8 @@ const ALL_MENUS = [
   { name: '分类', path: '/categories', permissions: MENU_COMPANY_PERMISSIONS },
   { name: '门店菜单', path: '/store-menu', permissions: MENU_STORE_PERMISSIONS },
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
+  // 角色矩阵放在员工旁边：给人分配角色的时候要知道这个角色能干什么
+  { name: '角色', path: '/roles', permissions: ['staff:manage', 'staff:manage:all'] },
   { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
 ]
 

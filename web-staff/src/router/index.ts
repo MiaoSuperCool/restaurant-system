@@ -61,6 +61,12 @@ const router = createRouter({
           meta: { permissions: ['staff:manage', 'staff:manage:all'] },
         },
         {
+          path: 'roles',
+          name: 'roles',
+          component: () => import('@/views/RolesView.vue'),
+          meta: { permissions: ['staff:manage', 'staff:manage:all'] },
+        },
+        {
           path: 'audit',
           name: 'audit',
           component: () => import('@/views/AuditView.vue'),
