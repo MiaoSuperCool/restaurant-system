@@ -35,3 +35,7 @@ flask-swagger-ui==5.32.15
 
 # 配置加载（.env）
 python-dotenv==1.0.1
+
+# 微信支付 V3 的签名与回调解密：SHA256withRSA + AES-256-GCM
+# 只实现协议、没接真实商户号，但代码是真的（见 app/services/wechat_pay.py）
+cryptography==50.0.1
