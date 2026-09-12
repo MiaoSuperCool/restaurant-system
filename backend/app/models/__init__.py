@@ -3,6 +3,8 @@ from .base import BaseModel
 from .category import Category
 from .dish import Dish
 from .dish_option import DishOption, DishOptionGroup
+from .order import Order, OrderItem, OrderItemOption
+from .payment import Payment
 from .permission import Permission
 from .role import Role
 from .staff import Staff
@@ -21,4 +23,8 @@ __all__ = [
     'Dish',
     'DishOptionGroup',
     'DishOption',
+    'Order',
+    'OrderItem',
+    'OrderItemOption',
+    'Payment',
 ]

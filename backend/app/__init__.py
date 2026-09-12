@@ -117,6 +117,7 @@ def register_blueprints(app):
         categories,
         dishes,
         main,
+        orders,
         roles,
         staff,
         store_menu,
@@ -165,6 +166,7 @@ def register_blueprints(app):
     api.register_blueprint(categories.bp)  # /api/categories
     api.register_blueprint(dishes.bp)  # /api/dishes
     api.register_blueprint(store_menu.bp)  # /api/stores/<id>/menu
+    api.register_blueprint(orders.bp)  # /api/orders
 
     # Swagger UI 页面（依赖已注册的路由，必须放最后）
     register_api_docs(app)
