@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from flask_login import current_user
+from sqlalchemy import func
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
@@ -66,6 +67,49 @@ class OrderService:
         return (query
                 .order_by(Order.id.desc())
                 .paginate(page=page, per_page=per_page, error_out=False))
+
+    # ---------- 首页统计 ----------
+
+    @staticmethod
+    def _today_utc_range():
+        """今天（服务器本地时区）对应的 UTC 时间范围
+
+        created_at 存的是 UTC 的墙上时间（不带时区），直接拿本地日期去比会错 8 小时——
+        早上 8 点之前的单子会被算成昨天。所以先按本地时区定出今天的起止，
+        再换算成 UTC 去比。
+        """
+        now_local = datetime.now().astimezone()
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+        # 去掉 tzinfo 是为了能和库里存的「naive UTC」直接比大小
+        return (start_local.astimezone(timezone.utc).replace(tzinfo=None),
+                end_local.astimezone(timezone.utc).replace(tzinfo=None))
+
+    @staticmethod
+    def get_today_stats(store_ids=None):
+        """首页看板：今天的订单数、营业额、待接单数
+
+        store_ids 为 None 表示不限门店（老板/运营看全公司），
+        否则只看这些店（店长看本店）。
+        """
+        start, end = OrderService._today_utc_range()
+
+        base = Order.query.filter(Order.created_at >= start, Order.created_at < end)
+        if store_ids is not None:
+            base = base.filter(Order.store_id.in_(store_ids))
+
+        # 营业额只算真收到手的钱，取消的单子不算
+        revenue = (db.session.query(func.coalesce(func.sum(Order.paid_amount), 0))
+                   .filter(Order.created_at >= start, Order.created_at < end,
+                           Order.status != Order.STATUS_CANCELLED))
+        if store_ids is not None:
+            revenue = revenue.filter(Order.store_id.in_(store_ids))
+
+        return {
+            'order_count': base.count(),
+            'revenue': float(revenue.scalar() or 0),
+            'pending_count': base.filter(Order.status == Order.STATUS_PENDING).count(),
+        }
 
     # ---------- 下单 ----------
 

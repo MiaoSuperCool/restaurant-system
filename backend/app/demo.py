@@ -167,14 +167,72 @@ ORDERS = [
 # ---------------------------------------------------------------- 执行
 
 def _clear_business_data():
-    """清空业务数据（保留员工、权限、门店这些基础配置）"""
+    """清空业务数据（保留员工、权限、门店这些基础配置）
+
+    **审计日志也一起清**。正常情况下审计日志是只增不删的，这里破例是因为
+    `seed-demo --reset` 的语义就是「把演示环境恢复到干净状态」——不清的话，
+    反复调试攒下的几百条登录记录会把真正想展示的操作淹掉。
+    生产环境绝对不该有这种入口。
+    """
     from backend.app.extensions import db
-    from backend.app.models import Order, OrderItem, OrderItemOption, Payment
+    from backend.app.models import (
+        AuditLog,
+        Order,
+        OrderItem,
+        OrderItemOption,
+        Payment,
+    )
 
     # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）
-    for model in (OrderItemOption, Payment, OrderItem, Order):
+    for model in (OrderItemOption, Payment, OrderItem, Order, AuditLog):
         model.query.delete()
     db.session.commit()
+
+
+def _write_demo_audit(order):
+    """给演示订单补审计记录
+
+    演示数据是直接建模型对象的（CLI 里没有请求上下文，走不了 service 层），
+    所以不会自动产生审计。但审计日志页是这套系统的卖点之一，空空如也的话
+    演示时看不出东西——这里按真实操作的格式补上，字段和 AuditService.log
+    写出来的一模一样。
+
+    一笔订单按它走到哪一步，留下几条记录：已完成的订单在现实中会留下
+    CREATE → ACCEPT → COMPLETE 三条，只补一条的话，审计页看起来像流程缺了环。
+    """
+    from backend.app.extensions import db
+    from backend.app.models import AuditLog
+
+    chain = {
+        'pending': ['CREATE_ORDER'],
+        'accepted': ['CREATE_ORDER', 'ACCEPT_ORDER'],
+        'completed': ['CREATE_ORDER', 'ACCEPT_ORDER', 'COMPLETE_ORDER'],
+        'cancelled': ['CREATE_ORDER', 'CANCEL_ORDER'],
+    }[order.status]
+
+    for action in chain:
+        db.session.add(AuditLog(
+            operator_id=order.operator_id,
+            operator_name=order.operator_name or '顾客自助',
+            action=action,
+            resource='order',
+            status='success',
+            new_value={'order_no': order.order_no,
+                       'payable_amount': float(order.payable_amount)},
+        ))
+
+    # 收款也留痕——收款是设计文档点名的关键动作之一
+    for index in range(len(order.payments)):
+        db.session.add(AuditLog(
+            operator_id=order.payments[index].operator_id,
+            operator_name=order.payments[index].operator_name or '顾客自助',
+            action='COLLECT_PAYMENT',
+            resource='order',
+            status='success',
+            new_value={'order_no': order.order_no,
+                       'payment_no': order.payments[index].payment_no,
+                       'amount': float(order.payments[index].amount)},
+        ))
 
 
 def seed_demo(reset=False):
@@ -359,6 +417,7 @@ def seed_demo(reset=False):
         db.session.flush()
         # 把下单时间往前铺开，列表看起来才像一天下来的单子
         order.created_at = base_time - timedelta(minutes=(len(ORDERS) - index) * 17)
+        _write_demo_audit(order)
         stats['orders'] += 1
 
     db.session.commit()

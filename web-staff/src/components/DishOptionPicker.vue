@@ -202,9 +202,10 @@ function handleClose() {
   margin-left: 6px;
 }
 
+/* 单选和多选都横排：两组行为不一致看起来像出了 bug。
+   选项多的时候自然换行，比一列到底省地方 */
 .option {
-  display: block;
-  margin: 0 0 4px;
+  margin: 0 16px 6px 0;
 }
 
 .extra {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { acceptOrder, cancelOrder, completeOrder, getOrders } from '@/api/orders'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { acceptOrder, completeOrder, getOrders } from '@/api/orders'
 import { getStoreOptions } from '@/api/stores'
 import type { Order, StoreOption } from '@/api/types'
 import OrderDetailDialog from '@/components/OrderDetailDialog.vue'
@@ -10,9 +11,9 @@ import { useAuthStore } from '@/stores/auth'
 import { formatPrice, formatTime } from '@/utils/format'
 
 const authStore = useAuthStore()
+const route = useRoute()
 
 const canReceive = computed(() => authStore.hasPermission('order:receive'))
-const canCancel = computed(() => authStore.hasPermission('order:cancel'))
 const canCollect = computed(() => authStore.hasPermission('pay:collect'))
 const canViewStores = computed(() => authStore.hasPermission('store:view'))
 
@@ -21,7 +22,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 10
 const search = ref('')
-const statusFilter = ref<string | null>(null)
+// 首页「处理订单」快捷入口会带 ?status=pending 进来，直接落在待接单上
+const statusFilter = ref<string | null>((route.query.status as string) || null)
 const storeFilter = ref<number | null>(null)
 const storeOptions = ref<StoreOption[]>([])
 const loading = ref(false)
@@ -87,25 +89,6 @@ async function handleComplete(order: Order) {
   }
 }
 
-async function handleCancel(order: Order) {
-  try {
-    await ElMessageBox.confirm(
-      `确定取消订单 ${order.order_no} 吗？\n已经收过款的订单不能直接取消，需要先走退款流程。`,
-      '取消订单',
-      { type: 'warning', confirmButtonText: '取消订单', cancelButtonText: '再想想' }
-    )
-  } catch {
-    return
-  }
-  try {
-    await cancelOrder(order.id)
-    ElMessage.success('订单已取消')
-    loadOrders()
-  } catch {
-    // 拦截器已提示
-  }
-}
-
 /** 待接单的行加底色，收银员一眼看到要处理的单子 */
 function rowClassName({ row }: { row: Order }) {
   return row.status === 'pending' ? 'row-pending' : ''
@@ -162,28 +145,38 @@ onMounted(() => {
 
     <div class="table-card">
       <el-table v-loading="loading" :data="orders" :row-class-name="rowClassName">
-        <el-table-column prop="order_no" label="单号" min-width="200" />
-        <el-table-column prop="store_name" label="门店" width="120" />
-        <el-table-column prop="source_label" label="来源" width="80" />
-        <el-table-column label="应付" width="100" align="right">
+        <!-- 列宽是算过的，内容区实际只有 892px
+             （1440 − 侧边栏 200 − 用户卡 240 − 页面 32×2 − 卡片 20×2）。
+             塞不下时的表现不是出现滚动条，而是 fixed 的操作列盖住前一列，
+             看起来像渲染坏了——所以来源和时间并进单号列做成两行，
+             省下两列的宽度，也更像收银台看单子的方式。 -->
+        <el-table-column label="单号" min-width="230">
+          <template #default="{ row }">
+            <div class="order-no">{{ row.order_no }}</div>
+            <div class="order-meta">
+              {{ row.source_label }} · {{ formatTime(row.created_at) }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="store_name" label="门店" min-width="115" />
+        <el-table-column label="应付" width="95" align="right">
           <template #default="{ row }">{{ formatPrice(row.payable_amount) }}</template>
         </el-table-column>
-        <el-table-column label="已收" width="100" align="right">
+        <el-table-column label="已收" width="95" align="right">
           <template #default="{ row }">
             <span :class="{ unpaid: !row.is_paid }">{{ formatPrice(row.paid_amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="92">
           <template #default="{ row }">
             <el-tag :type="ORDER_STATUS_TAG[row.status] ?? 'info'" disable-transitions>
               {{ row.status_label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="下单时间" width="150">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <!-- 取消不放这里：一行四个按钮太挤，而且取消是低频操作，
+             挪到详情弹窗里多点一下、也看得更清楚 -->
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'pending' && canReceive"
@@ -208,15 +201,6 @@ onMounted(() => {
               收款
             </el-button>
             <el-button size="small" link @click="openDetail(row)">详情</el-button>
-            <el-button
-              v-if="['pending', 'accepted'].includes(row.status) && row.paid_amount === 0 && canCancel"
-              size="small"
-              link
-              class="btn-cancel"
-              @click="handleCancel(row)"
-            >
-              取消
-            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -288,11 +272,21 @@ onMounted(() => {
   box-shadow: inset 3px 0 0 #c45656;
 }
 
-.unpaid {
-  color: #c45656;
+.order-no {
+  font-weight: 600;
+  color: #1f1f1f;
+  line-height: 1.4;
 }
 
-.btn-cancel {
+/* 来源和时间做成单号下面的一行小字：它们是次要信息，
+   单独占两列会把表格挤爆 */
+.order-meta {
+  font-size: 12px;
+  color: #a0a0a0;
+  line-height: 1.4;
+}
+
+.unpaid {
   color: #c45656;
 }
 

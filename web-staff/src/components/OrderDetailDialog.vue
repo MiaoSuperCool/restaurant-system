@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { collectPayment, getOrder } from '@/api/orders'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { cancelOrder, collectPayment, getOrder } from '@/api/orders'
 import type { Order } from '@/api/types'
 import { ORDER_STATUS_TAG, PAYMENT_METHOD_OPTIONS } from '@/constants/order'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +19,16 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const canCollect = computed(() => authStore.hasPermission('pay:collect'))
+
+// 取消放在详情里而不是列表行上：一行四个按钮太挤，而且取消是低频操作，
+// 值得多点一下看清楚再点
+const canCancelThis = computed(() => {
+  const current = order.value
+  return current !== null
+    && authStore.hasPermission('order:cancel')
+    && ['pending', 'accepted'].includes(current.status)
+    && current.paid_amount === 0
+})
 
 const order = ref<Order | null>(null)
 const loading = ref(false)
@@ -86,6 +96,27 @@ async function handleCollect() {
     // 拦截器已提示
   } finally {
     saving.value = false
+  }
+}
+
+async function handleCancel() {
+  if (!order.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定取消订单 ${order.value.order_no} 吗？\n已经收过款的订单不能直接取消，需要先走退款流程。`,
+      '取消订单',
+      { type: 'warning', confirmButtonText: '取消订单', cancelButtonText: '再想想' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await cancelOrder(order.value.id)
+    ElMessage.success('订单已取消')
+    emit('changed')
+    await load()
+  } catch {
+    // 拦截器已提示
   }
 }
 
@@ -216,6 +247,9 @@ function handleClose() {
     </div>
 
     <template #footer>
+      <el-button v-if="canCancelThis" class="btn-cancel" @click="handleCancel">
+        取消订单
+      </el-button>
       <el-button @click="handleClose">关闭</el-button>
     </template>
   </el-dialog>
@@ -324,5 +358,11 @@ function handleClose() {
   color: #8c8c8c;
   line-height: 1.7;
   margin-top: 8px;
+}
+
+.btn-cancel {
+  float: left;
+  color: #c45656;
+  border-color: #f0d0d0;
 }
 </style>

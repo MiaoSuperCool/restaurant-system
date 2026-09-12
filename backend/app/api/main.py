@@ -2,16 +2,19 @@ from flask import jsonify
 from flask_login import current_user, login_required
 from flask_smorest import Blueprint
 
-from backend.app.services import AuthService, StaffService, StoreService
+from backend.app.services import AuthService, OrderService, StaffService, StoreService
 from backend.app.utils.api_response import api_response
 
 bp = Blueprint('main', __name__)
 
 @bp.route('/index')
-@bp.response(200, description='当前登录员工 + 权限 + 示例统计')
+@bp.response(200, description='当前登录员工 + 权限 + 今日经营看板')
 @login_required
 def index():
-    """首页基础信息（需登录）：当前登录员工 + 权限 + 示例统计
+    """首页（需登录）：当前登录员工 + 权限 + 今天的经营情况
+
+    'today' 这部分也受数据范围限制——店长看到的是本店的今日数据，
+    老板看到的是全公司的。
 
     前端在页面刷新后会再调一次这个接口，用来同步最新的权限
     （改了角色不用重新登录就能生效）——登录接口返回的是同一份结构。
@@ -23,6 +26,7 @@ def index():
         success=True,
         data={
             **AuthService.session_payload(current_user),
+            'today': OrderService.get_today_stats(current_user.accessible_store_ids()),
             'staff_count': StaffService.get_all_count(),
             'store_count': StoreService.get_all_count(),
         }
