@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -201,20 +202,61 @@ class OrderService:
         return item
 
     @staticmethod
+    def build_order(store, items_data, source, remark='', operator=None, member_id=None):
+        """下单的核心：校验菜品、算价、生成单号
+
+        **内部代点单和顾客自助下单都走这里。** 算价逻辑只能有一份——
+        两条路径各算各的，迟早会算出两个数（而这是钱的事）。
+
+        调用方负责权限和数据范围：内部下单要查登录员工的范围，
+        顾客下单走公开接口，没有范围一说（顾客本来就在某一家店里）。
+        """
+        order = Order(
+            order_no=OrderService.next_order_no(store),
+            # 顾客端查订单的凭据（见 Order.query_token 的注释）
+            query_token=secrets.token_hex(12),
+            store_id=store.id,
+            source=source,
+            remark=remark,
+            member_id=member_id,
+        )
+        if operator:
+            order.operator_id = operator.id
+            order.operator_name = operator.real_name or operator.username
+
+        total = Decimal('0')
+        for raw in items_data:
+            dish = db.session.get(Dish, raw['dish_id'])
+            if not dish:
+                raise NotFoundError(f'菜品不存在（dish_id={raw["dish_id"]}）')
+            if dish.status != Dish.STATUS_ACTIVE:
+                raise BusinessError(f'「{dish.name}」已停售，点不了')
+
+            override = StoreDish.query.filter_by(
+                store_id=store.id, dish_id=dish.id
+            ).first()
+            if override and not override.is_available:
+                raise BusinessError(f'「{dish.name}」在这家门店已下架，点不了')
+
+            item = OrderService.build_order_item(
+                dish, override, raw['quantity'], raw['option_ids'] or []
+            )
+            order.items.append(item)
+            total += item.subtotal
+
+        order.total_amount = total
+        order.discount_amount = Decimal('0')   # 优惠券是二期的事
+        order.payable_amount = total
+        order.paid_amount = Decimal('0')
+        return order
+
+    @staticmethod
     def create_order(data):
         try:
             store = db.session.get(Store, data['store_id'])
             if not store:
                 raise NotFoundError('门店不存在')
             OrderService.assert_store_in_scope(store.id)
-
-            # 单开一个事务：订单和明细要么一起成功，要么一起失败
-            order = Order(
-                order_no=OrderService.next_order_no(store),
-                store_id=store.id,
-                source=data['source'],
-                remark=data.get('remark', ''),
-            )
 
             # 操作人：传了 operator_id 就是「实际操作人」（公用账号场景下选的人）；
             # 没传就用当前登录账号
@@ -225,35 +267,12 @@ class OrderService:
                     raise NotFoundError('操作人不存在')
             elif current_user.is_authenticated:
                 operator = current_user
-            if operator:
-                order.operator_id = operator.id
-                order.operator_name = operator.real_name or operator.username
 
-            total = Decimal('0')
-            for raw in data['items']:
-                dish = db.session.get(Dish, raw['dish_id'])
-                if not dish:
-                    raise NotFoundError(f'菜品不存在（dish_id={raw["dish_id"]}）')
-                if dish.status != Dish.STATUS_ACTIVE:
-                    raise BusinessError(f'「{dish.name}」已停售，点不了')
-
-                override = StoreDish.query.filter_by(
-                    store_id=store.id, dish_id=dish.id
-                ).first()
-                if override and not override.is_available:
-                    raise BusinessError(f'「{dish.name}」在这家门店已下架，点不了')
-
-                item = OrderService.build_order_item(
-                    dish, override, raw['quantity'], raw['option_ids'] or []
-                )
-                order.items.append(item)
-                total += item.subtotal
-
-            order.total_amount = total
-            order.discount_amount = Decimal('0')   # 优惠券是二期的事
-            order.payable_amount = total
-            order.paid_amount = Decimal('0')
-
+            # 单开一个事务：订单和明细要么一起成功，要么一起失败
+            order = OrderService.build_order(
+                store, data['items'], data['source'],
+                data.get('remark', ''), operator,
+            )
             db.session.add(order)
             db.session.commit()
 

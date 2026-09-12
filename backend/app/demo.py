@@ -18,6 +18,7 @@ current_user 会直接抛异常。所以这里是直接建模型对象。
 加 --reset 会先清空业务数据再重建。
 """
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -387,6 +388,9 @@ def seed_demo(reset=False):
 
         order = Order(
             order_no=OrderService.next_order_no(store),
+            # 顾客端查订单的凭据。演示数据直接建模型对象（不走 create_order），
+            # 所以这里要手动给——不然演示订单在顾客端查不到
+            query_token=secrets.token_hex(12),
             store_id=store.id,
             source=spec['source'],
             status=spec['status'],

@@ -65,6 +65,12 @@ class Order(BaseModel):
     # 做成可读的而不是 UUID——顾客电话里报单号、店员在屏幕上一眼找单子都要用
     order_no = db.Column(db.String(32), unique=True, nullable=False, index=True)
 
+    # 顾客端查订单的凭据。
+    # 单号是可读的、**也是可以猜的**（S001-20260912-0001、0002、0003……），
+    # 如果只凭单号就能查详情，遍历一遍就看到了别人点了什么、花了多少。
+    # 所以下单时另发一个随机串，查详情要同时带上单号和它。
+    query_token = db.Column(db.String(32), nullable=False, default='', index=True)
+
     store_id = db.Column(
         db.Integer, db.ForeignKey('store.id', ondelete='RESTRICT'),
         nullable=False, index=True,
@@ -132,6 +138,7 @@ class Order(BaseModel):
         data = {
             'id': self.id,
             'order_no': self.order_no,
+            'query_token': self.query_token,
             'store_id': self.store_id,
             'store_name': self.store.name if self.store else None,
             'member_id': self.member_id,

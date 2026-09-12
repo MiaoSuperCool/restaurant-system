@@ -49,7 +49,32 @@ class StoreDishService:
         # 不然店长能拉到别家店的菜单（只是看，但价格和上下架本来就是敏感信息）
         StoreDishService.get_store_or_404(store_id)
         StoreDishService.assert_in_scope(store_id)
+        return StoreDishService._query_menu(store_id, category_id, search)
 
+    @staticmethod
+    def get_public_menu(store_id):
+        """顾客端看的菜单
+
+        和内部菜单的区别：
+        - **不查数据范围**：顾客本来就在店里，没有「能看哪些店」一说
+        - **只看营业中的门店**：休息中/已停业的店点不了单，菜单也不该给
+        - **过滤掉本店下架的菜**：收银台上摆着点不了的菜只是添乱，
+          顾客端更不该出现
+
+        算价和规格结构完全复用内部那套——菜单接口给的价就是下单用的价，
+        不能有两套。
+        """
+        store = StoreDishService.get_store_or_404(store_id)
+        if store.business_status != Store.STATUS_OPEN:
+            raise BusinessError(
+                f'「{store.name}」{store.STATUS_LABELS.get(store.business_status)}，暂时不接单'
+            )
+        return [row for row in StoreDishService._query_menu(store_id)
+                if row['is_available']]
+
+    @staticmethod
+    def _query_menu(store_id, category_id=None, search=None):
+        """按门店查菜单并合并本店覆盖——内部和顾客端共用的查询"""
         query = Dish.query.filter(Dish.status == Dish.STATUS_ACTIVE)
 
         if category_id:
