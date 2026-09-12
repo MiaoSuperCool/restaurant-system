@@ -3,6 +3,7 @@ from .auth_service import AuthService
 from .category_service import CategoryService
 from .dish_service import DishService
 from .staff_service import StaffService
+from .store_dish_service import StoreDishService
 from .store_service import StoreService
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     'CategoryService',
     'DishService',
     'StaffService',
+    'StoreDishService',
     'StoreService',
 ]

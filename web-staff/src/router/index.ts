@@ -33,6 +33,14 @@ const router = createRouter({
           meta: { permissions: MENU_MANAGE_PERMISSIONS },
         },
         {
+          path: 'store-menu',
+          name: 'store-menu',
+          component: () => import('@/views/StoreMenuView.vue'),
+          // 门店菜单是「菜单管理」的一部分：能改菜单的人才进得来。
+          // 这也顺带保证了页面里的门店下拉可用（这几个角色都有 store:view）
+          meta: { permissions: MENU_MANAGE_PERMISSIONS },
+        },
+        {
           path: 'staff',
           name: 'staff',
           component: () => import('@/views/StaffView.vue'),

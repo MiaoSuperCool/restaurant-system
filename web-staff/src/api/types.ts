@@ -92,6 +92,18 @@ export interface Store {
   updated_at: string | null
 }
 
+/** 门店菜品覆盖记录（对应 store_dish.py，设置接口的返回值） */
+export interface StoreDish {
+  id: number
+  store_id: number
+  dish_id: number
+  /** 本店覆盖价；null 表示用菜品基础价 */
+  price: number | null
+  is_available: boolean
+  daily_limit: number | null
+  has_price_override: boolean
+}
+
 /** 门店下拉选项（/api/stores/options，表单选归属门店用） */
 export interface StoreOption {
   id: number
@@ -161,6 +173,30 @@ export interface Dish {
   updated_at: string | null
   /** 只有详情接口带（列表太重不带） */
   option_groups?: DishOptionGroup[]
+}
+
+/**
+ * 门店菜单里的一行：菜品基础 + 本店覆盖合并后的结果
+ *
+ * 对应后端 store_dish_service._merge()。注意 price 是本店实际售价、
+ * base_price 是公司基础价——两个都给你，是为了让界面能显示「改过的价格」。
+ */
+export interface StoreMenuRow {
+  dish_id: number
+  name: string
+  image: string
+  description: string
+  category_id: number
+  category_name: string | null
+  /** 公司基础价 */
+  base_price: number
+  /** 本店实际售价（有覆盖用覆盖价，没有就用基础价） */
+  price: number
+  has_price_override: boolean
+  is_available: boolean
+  daily_limit: number | null
+  /** 这家店有没有对这道菜做过特殊设置 */
+  has_override: boolean
 }
 
 /** 标准分页信息 */

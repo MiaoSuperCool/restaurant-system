@@ -19,6 +19,7 @@ const ALL_MENUS = [
   { name: '门店', path: '/stores', permissions: ['store:view'] },
   { name: '菜品', path: '/dishes', permissions: MENU_MANAGE_PERMISSIONS },
   { name: '分类', path: '/categories', permissions: MENU_MANAGE_PERMISSIONS },
+  { name: '门店菜单', path: '/store-menu', permissions: MENU_MANAGE_PERMISSIONS },
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
   { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
 ]

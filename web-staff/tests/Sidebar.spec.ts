@@ -59,7 +59,7 @@ describe('Sidebar 菜单按权限渲染', () => {
   it('店长看到门店、菜品、分类和员工，看不到审计', async () => {
     // 店长有 store:view + menu:update + dish:price:edit + staff:manage
     loginAs(false, ['store:view', 'menu:update', 'dish:price:edit', 'staff:manage'])
-    expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '员工'])
+    expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '门店菜单', '员工'])
   })
 
   it('收银员有 menu:view 但看不到菜单管理', async () => {
@@ -75,6 +75,7 @@ describe('Sidebar 菜单按权限渲染', () => {
       '门店',
       '菜品',
       '分类',
+      '门店菜单',
       '员工',
       '审计日志',
     ])
@@ -82,6 +83,6 @@ describe('Sidebar 菜单按权限渲染', () => {
 
   it('运营主管有 store:view 和菜单管理，但没有员工管理和审计', async () => {
     loginAs(false, ['store:view', 'menu:create', 'campaign:manage'])
-    expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类'])
+    expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '门店菜单'])
   })
 })

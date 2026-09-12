@@ -7,12 +7,14 @@ from .permission import Permission
 from .role import Role
 from .staff import Staff
 from .store import Store
+from .store_dish import StoreDish
 
 __all__ = [
     'BaseModel',
     'Staff',
     'AuditLog',
     'Store',
+    'StoreDish',
     'Role',
     'Permission',
     'Category',
