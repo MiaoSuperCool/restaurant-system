@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { MENU_MANAGE_PERMISSIONS } from '@/constants/menu'
+import { MENU_COMPANY_PERMISSIONS, MENU_STORE_PERMISSIONS } from '@/constants/menu'
 import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
@@ -31,21 +31,21 @@ const router = createRouter({
           path: 'dishes',
           name: 'dishes',
           component: () => import('@/views/DishesView.vue'),
-          meta: { permissions: MENU_MANAGE_PERMISSIONS },
+          meta: { permissions: MENU_COMPANY_PERMISSIONS },
         },
         {
           path: 'categories',
           name: 'categories',
           component: () => import('@/views/CategoriesView.vue'),
-          meta: { permissions: MENU_MANAGE_PERMISSIONS },
+          meta: { permissions: MENU_COMPANY_PERMISSIONS },
         },
         {
           path: 'store-menu',
           name: 'store-menu',
           component: () => import('@/views/StoreMenuView.vue'),
-          // 门店菜单是「菜单管理」的一部分：能改菜单的人才进得来。
-          // 这也顺带保证了页面里的门店下拉可用（这几个角色都有 store:view）
-          meta: { permissions: MENU_MANAGE_PERMISSIONS },
+          // 门店菜单是店长的入口：他有 menu:update（本店范围），
+          // 但进不了公司级的菜品/分类页
+          meta: { permissions: MENU_STORE_PERMISSIONS },
         },
         {
           path: 'staff',

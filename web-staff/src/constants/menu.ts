@@ -18,12 +18,22 @@ export const SELECTION_TYPE_OPTIONS: EnumOption[] = [
 ]
 
 /**
- * 「菜单管理」页面组（菜品 / 分类）的准入权限，任一即可
+ * 「公司级菜单管理」（菜品 / 分类）的准入权限，任一即可
  *
- * 没用 menu:view：收银员和服务员也有 menu:view（点单要看菜单），
- * 但他们不该在侧边栏看到菜单管理。这里要的是「能改菜单的人」。
+ * 两个细节：
+ *
+ * 1. 没用 menu:view：收银员和服务员也有 menu:view（点单要看菜单），
+ *    但他们不该在侧边栏看到菜单管理。
+ *
+ * 2. 也没用 menu:update：店长有 menu:update，但菜品和分类是**全公司数据**，
+ *    他改不了（后端按数据范围拦住）。菜单只按 menu:update 放行的话，
+ *    店长会看到一个点进去什么都动不了的页面——能进但一操作就 403，体验很糟。
+ *    店长该走的入口是「门店菜单」。
  */
-export const MENU_MANAGE_PERMISSIONS = ['menu:create', 'menu:update', 'menu:delete']
+export const MENU_COMPANY_PERMISSIONS = ['menu:create', 'menu:delete']
+
+/** 「门店菜单」（本店价格/上下架/限量）的准入权限 */
+export const MENU_STORE_PERMISSIONS = ['menu:update']
 
 /** 菜品状态 → el-tag 的 type */
 export const DISH_STATUS_TAG: Record<string, string> = {

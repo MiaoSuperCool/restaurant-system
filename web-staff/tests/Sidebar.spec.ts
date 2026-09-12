@@ -61,15 +61,15 @@ describe('Sidebar 菜单按权限渲染', () => {
     expect(await menuTexts()).toEqual(['主页面', '订单'])
   })
 
-  it('店长看到除审计外的全部菜单', async () => {
-    // 店长的权限：store:view + order:view + menu:update + dish:* + staff:manage
+  it('店长进的是「门店菜单」，不是公司级的「菜品/分类」', async () => {
+    // 店长的真实权限：store:view + order:view + menu:update + dish:* + staff:manage
+    // 他有 menu:update，但菜品和分类是全公司数据、他改不了，
+    // 所以侧边栏不该放他点进去什么都动不了的页面
     loginAs(false, ['store:view', 'order:view', 'menu:update', 'dish:price:edit', 'staff:manage'])
     expect(await menuTexts()).toEqual([
       '主页面',
       '订单',
       '门店',
-      '菜品',
-      '分类',
       '门店菜单',
       '员工',
     ])
@@ -95,8 +95,10 @@ describe('Sidebar 菜单按权限渲染', () => {
     ])
   })
 
-  it('运营主管有 store:view 和菜单管理，但没有员工管理和审计', async () => {
-    loginAs(false, ['store:view', 'menu:create', 'campaign:manage'])
+  it('运营主管能管全公司菜单，但没有员工管理和审计', async () => {
+    // 运营主管：store:view + menu:create/update/delete + dish:* + campaign:manage
+    loginAs(false, ['store:view', 'menu:create', 'menu:update', 'menu:delete',
+                    'dish:price:edit', 'campaign:manage'])
     expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '门店菜单'])
   })
 })

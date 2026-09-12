@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MENU_MANAGE_PERMISSIONS } from '@/constants/menu'
+import { MENU_COMPANY_PERMISSIONS, MENU_STORE_PERMISSIONS } from '@/constants/menu'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -19,9 +19,9 @@ const ALL_MENUS = [
   // 订单放前面：收银员一天到晚都开着这一页
   { name: '订单', path: '/orders', permissions: ['order:view'] },
   { name: '门店', path: '/stores', permissions: ['store:view'] },
-  { name: '菜品', path: '/dishes', permissions: MENU_MANAGE_PERMISSIONS },
-  { name: '分类', path: '/categories', permissions: MENU_MANAGE_PERMISSIONS },
-  { name: '门店菜单', path: '/store-menu', permissions: MENU_MANAGE_PERMISSIONS },
+  { name: '菜品', path: '/dishes', permissions: MENU_COMPANY_PERMISSIONS },
+  { name: '分类', path: '/categories', permissions: MENU_COMPANY_PERMISSIONS },
+  { name: '门店菜单', path: '/store-menu', permissions: MENU_STORE_PERMISSIONS },
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
   { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
 ]
