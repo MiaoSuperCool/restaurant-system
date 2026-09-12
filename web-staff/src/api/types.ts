@@ -225,6 +225,26 @@ export interface OrderItem {
   options: OrderItemOption[]
 }
 
+/**
+ * 团购券核销记录（对应 groupon_voucher.py）
+ *
+ * 和 Payment 的区别：核销记录管「这张券用掉了」（券码唯一、按平台对账），
+ * 收款记录管「这一笔记了多少钱」。核销会同时产生两者。
+ */
+export interface GrouponVoucher {
+  id: number
+  /** 券码：全局唯一，同一张券不能核销两次 */
+  code: string
+  platform: string
+  platform_label: string
+  amount: number
+  order_id: number
+  order_no: string | null
+  payment_id: number | null
+  verified_by_name: string
+  verified_at: string | null
+}
+
 /** 支付记录（对应 payment.py） */
 export interface Payment {
   id: number

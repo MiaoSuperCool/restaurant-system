@@ -2,6 +2,7 @@
 import js from '@eslint/js'
 import pluginVue from 'eslint-plugin-vue'
 import prettier from 'eslint-config-prettier'
+import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
@@ -17,6 +18,15 @@ export default tseslint.config(
     files: ['**/*.vue'],
     languageOptions: {
       parserOptions: { parser: tseslint.parser },
+    },
+  },
+  {
+    // 前端代码跑在浏览器里，window / document / localStorage 这些是全局的。
+    // typescript-eslint 只对 .ts 文件关掉了 no-undef，.vue 不在此列，
+    // 不显式声明的话 `window.open(...)` 会被报成「未定义」。
+    files: ['src/**/*.{ts,vue}', 'tests/**/*.ts'],
+    languageOptions: {
+      globals: { ...globals.browser },
     },
   },
   // 关闭与 Prettier 冲突的格式规则（放在最后覆盖前面的规则）

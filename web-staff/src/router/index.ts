@@ -7,6 +7,13 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     {
+      // 小票不进主布局：打印时侧边栏和用户卡不该出现在纸上
+      path: '/receipt/:id',
+      name: 'receipt',
+      component: () => import('@/views/ReceiptView.vue'),
+      meta: { permissions: ['order:view'] },
+    },
+    {
       // 主布局作为父路由：登录后的所有页面都套在它里面
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
@@ -25,6 +32,13 @@ const router = createRouter({
           component: () => import('@/views/OrdersView.vue'),
           // 收银员、值班经理、店长、财务都有 order:view
           meta: { permissions: ['order:view'] },
+        },
+        {
+          path: 'groupon-vouchers',
+          name: 'groupon-vouchers',
+          component: () => import('@/views/GrouponVouchersView.vue'),
+          // 核销记录是给对账用的：能核销的人（收银/店长）和财务都看得到
+          meta: { permissions: ['coupon:verify', 'finance:view'] },
         },
         {
           path: 'refunds',

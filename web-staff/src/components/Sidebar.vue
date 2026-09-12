@@ -20,6 +20,7 @@ const ALL_MENUS = [
   { name: '点单', path: '/new-order', permissions: ['order:create'] },
   { name: '订单', path: '/orders', permissions: ['order:view'] },
   { name: '退款', path: '/refunds', permissions: ['refund:view'] },
+  { name: '团购券', path: '/groupon-vouchers', permissions: ['coupon:verify', 'finance:view'] },
   { name: '门店', path: '/stores', permissions: ['store:view'] },
   { name: '菜品', path: '/dishes', permissions: MENU_COMPANY_PERMISSIONS },
   { name: '分类', path: '/categories', permissions: MENU_COMPANY_PERMISSIONS },

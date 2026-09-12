@@ -71,12 +71,13 @@ describe('Sidebar 菜单按权限渲染', () => {
     // 他有 menu:update，但菜品和分类是全公司数据、他改不了，
     // 所以侧边栏不该放他点进去什么都动不了的页面
     loginAs(false, ['store:view', 'order:create', 'order:view', 'refund:view',
-                    'menu:update', 'dish:price:edit', 'staff:manage'])
+                    'coupon:verify', 'menu:update', 'dish:price:edit', 'staff:manage'])
     expect(await menuTexts()).toEqual([
       '主页面',
       '点单',
       '订单',
       '退款',
+      '团购券',
       '门店',
       '门店菜单',
       '员工',
@@ -97,6 +98,7 @@ describe('Sidebar 菜单按权限渲染', () => {
       '点单',
       '订单',
       '退款',
+      '团购券',
       '门店',
       '菜品',
       '分类',

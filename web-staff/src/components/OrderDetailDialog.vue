@@ -6,6 +6,7 @@ import type { Order } from '@/api/types'
 import { ORDER_STATUS_TAG, PAYMENT_METHOD_OPTIONS } from '@/constants/order'
 import { REFUND_STATUS_TAG } from '@/constants/refund'
 import RefundApplyDialog from '@/components/RefundApplyDialog.vue'
+import GrouponVerifyDialog from '@/components/GrouponVerifyDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatPrice, formatTime } from '@/utils/format'
 
@@ -30,6 +31,8 @@ const canApplyRefund = computed(() => {
 })
 
 const refundApplyVisible = ref(false)
+const grouponVisible = ref(false)
+const canVerifyGroupon = computed(() => authStore.hasPermission('coupon:verify'))
 
 // 取消放在详情里而不是列表行上：一行四个按钮太挤，而且取消是低频操作，
 // 值得多点一下看清楚再点
@@ -137,6 +140,11 @@ async function handleRefundApplied() {
   await load()
 }
 
+function openReceipt() {
+  if (!order.value) return
+  window.open(`/receipt/${order.value.id}`, '_blank')
+}
+
 function handleClose() {
   emit('update:modelValue', false)
 }
@@ -165,6 +173,10 @@ function handleClose() {
           </div>
           <span class="head-meta">
             {{ order.store_name }} · {{ order.source_label }} · {{ formatTime(order.created_at) }}
+            <!-- 小票开新窗口：它是独立页面，不进主布局（打印时不该带上侧边栏） -->
+            <el-button link type="primary" class="print-link" @click="openReceipt">
+              打印小票
+            </el-button>
           </span>
         </div>
 
@@ -293,10 +305,14 @@ function handleClose() {
               class="collect-txn"
             />
             <el-button type="primary" :loading="saving" @click="handleCollect">收款</el-button>
+            <el-button v-if="canVerifyGroupon" @click="grouponVisible = true">
+              核销团购券
+            </el-button>
           </div>
           <p class="hint">
             一个订单可以收多笔：组合支付（储值 + 现金）、先定金后尾款，分几次收都行。
             第三方流水号是财务对账的依据，线上支付务必填。
+            顾客用美团/抖音团购券的，走「核销团购券」——它会同时记核销记录和收款。
           </p>
         </template>
         <p v-else-if="!canCollect" class="hint">没有收款权限</p>
@@ -312,6 +328,12 @@ function handleClose() {
 
     <RefundApplyDialog
       v-model="refundApplyVisible"
+      :order="order"
+      @success="handleRefundApplied"
+    />
+
+    <GrouponVerifyDialog
+      v-model="grouponVisible"
       :order="order"
       @success="handleRefundApplied"
     />
@@ -406,6 +428,11 @@ function handleClose() {
 .flow-line {
   font-size: 12px;
   line-height: 1.5;
+}
+
+.print-link {
+  margin-left: 10px;
+  font-size: 12px;
 }
 
 .collect-row {

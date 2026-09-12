@@ -2,6 +2,7 @@ from .audit_service import AuditService
 from .auth_service import AuthService
 from .category_service import CategoryService
 from .dish_service import DishService
+from .groupon_service import GrouponService
 from .order_service import OrderService
 from .refund_service import RefundService
 from .staff_service import StaffService
@@ -13,6 +14,7 @@ __all__ = [
     'AuthService',
     'CategoryService',
     'DishService',
+    'GrouponService',
     'OrderService',
     'RefundService',
     'StaffService',

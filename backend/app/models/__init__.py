@@ -3,6 +3,7 @@ from .base import BaseModel
 from .category import Category
 from .dish import Dish
 from .dish_option import DishOption, DishOptionGroup
+from .groupon_voucher import GrouponVoucher
 from .order import Order, OrderItem, OrderItemOption
 from .payment import Payment
 from .permission import Permission
@@ -30,4 +31,5 @@ __all__ = [
     'Payment',
     'Refund',
     'RefundTxn',
+    'GrouponVoucher',
 ]

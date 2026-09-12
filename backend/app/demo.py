@@ -149,8 +149,8 @@ ORDERS = [
      'remark': '先付定金', 'items': [('金牌猪软骨面', 4, ['大份'])],
      'payments': [('balance', 'half'), ('cash', 'rest')]},
     {'store': 'S004', 'source': 'delivery', 'status': 'completed', 'operator': 'shouyin',
-     'remark': '', 'items': [('咖喱牛肉饭', 1, ['微辣']), ('凉拌黄瓜', 1, [])],
-     'payments': [('wechat', 'full')]},
+     'remark': '顾客买的美团套餐', 'items': [('咖喱牛肉饭', 1, ['微辣']), ('凉拌黄瓜', 1, [])],
+     'payments': [('groupon', 'full')]},
     {'store': 'S003', 'source': 'dine_in', 'status': 'completed', 'operator': 'dianzhang',
      'remark': '老顾客', 'items': [('雪菜肉丝面', 2, ['大份', '微辣']),
                                    ('现磨豆浆', 2, ['无糖'])],
@@ -191,6 +191,7 @@ def _clear_business_data():
     from backend.app.extensions import db
     from backend.app.models import (
         AuditLog,
+        GrouponVoucher,
         Order,
         OrderItem,
         OrderItemOption,
@@ -200,7 +201,8 @@ def _clear_business_data():
     )
 
     # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）
-    for model in (RefundTxn, Refund, OrderItemOption, Payment, OrderItem, Order, AuditLog):
+    for model in (RefundTxn, Refund, GrouponVoucher, OrderItemOption, Payment,
+                  OrderItem, Order, AuditLog):
         model.query.delete()
     db.session.commit()
 
@@ -264,6 +266,7 @@ def seed_demo(reset=False):
         Dish,
         DishOption,
         DishOptionGroup,
+        GrouponVoucher,
         Order,
         Payment,
         Refund,
@@ -279,7 +282,7 @@ def seed_demo(reset=False):
         _clear_business_data()
 
     stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0,
-             'overrides': 0, 'orders': 0, 'payments': 0, 'refunds': 0}
+             'overrides': 0, 'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0}
 
     # ---------- 门店 ----------
     stores_by_code = {}
@@ -482,6 +485,29 @@ def seed_demo(reset=False):
 
         db.session.add(refund)
         stats['refunds'] += 1
+
+    # ---------- 团购券核销记录 ----------
+    # 订单里用团购券付过款的那几笔，补一条对应的核销记录。
+    # 真实流程里这两件事是同时发生的（GrouponService.verify 一次做两件），
+    # 演示数据直接建模型对象，所以要手动补上，否则核销记录页是空的。
+    for order in created_orders:
+        for index, payment in enumerate(order.payments, start=1):
+            if payment.method != Payment.METHOD_GROUPON:
+                continue
+            db.session.add(GrouponVoucher(
+                # 券码按平台的习惯编一个（美团券码一般是 MT 开头的一长串）。
+                # 用完整单号而不是尾几位——不同门店同一天同一序号的订单，
+                # 单号尾段是一样的，截短了会撞（券码有唯一约束，撞了就报错）
+                code=f'MT{order.order_no.replace("-", "")}{index:02d}',
+                platform=GrouponVoucher.PLATFORM_MEITUAN,
+                amount=payment.amount,
+                order_id=order.id,
+                payment_id=payment.id,
+                verified_by_id=payment.operator_id,
+                verified_by_name=payment.operator_name,
+                verified_at=payment.paid_at or base_time,
+            ))
+            stats['groupons'] += 1
 
     db.session.commit()
     logger.info('演示数据就绪：%s', stats)

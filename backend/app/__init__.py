@@ -116,6 +116,7 @@ def register_blueprints(app):
         auth,
         categories,
         dishes,
+        groupon,
         main,
         orders,
         refunds,
@@ -169,6 +170,7 @@ def register_blueprints(app):
     api.register_blueprint(store_menu.bp)  # /api/stores/<id>/menu
     api.register_blueprint(orders.bp)  # /api/orders
     api.register_blueprint(refunds.bp)  # /api/refunds
+    api.register_blueprint(groupon.bp)  # /api/orders/<id>/vouchers, /api/groupon-vouchers
 
     # Swagger UI 页面（依赖已注册的路由，必须放最后）
     register_api_docs(app)
