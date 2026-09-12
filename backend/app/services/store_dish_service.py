@@ -1,8 +1,9 @@
 from flask_login import current_user
+from sqlalchemy.orm import joinedload, selectinload
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
-from backend.app.models import Category, Dish, Store, StoreDish
+from backend.app.models import Category, Dish, DishOptionGroup, Store, StoreDish
 from backend.app.rbac import permission_name
 from backend.app.services.audit_service import AuditService
 
@@ -56,7 +57,16 @@ class StoreDishService:
         if search:
             query = query.filter(Dish.name.ilike(f'%{search}%'))
 
-        dishes = query.order_by(Dish.sort_order, Dish.id).all()
+        # 下面要读每道菜的分类和规格组，不预加载的话是 N+1 查询
+        # （50 道菜 = 100 次额外查询）。点单界面每次都要拉整份菜单，
+        # 这里省下来的很实在。
+        dishes = (query
+                  .options(
+                      joinedload(Dish.category),
+                      selectinload(Dish.option_groups).selectinload(DishOptionGroup.options),
+                  )
+                  .order_by(Dish.sort_order, Dish.id)
+                  .all())
 
         # 一次把这家店的覆盖全查出来，避免每道菜查一次（N+1）
         overrides = {
@@ -84,6 +94,8 @@ class StoreDishService:
             'daily_limit': override.daily_limit if override else None,
             # 给前端判断「是不是改过默认值」用，改过的行才显示「恢复默认」按钮
             'has_override': override is not None,
+            # 规格组：点单界面要用它渲染规格选择器
+            'option_groups': [group.to_dict() for group in dish.option_groups],
         }
 
     @staticmethod

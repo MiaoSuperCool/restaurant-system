@@ -21,6 +21,28 @@ export interface CollectPayload {
   transaction_no?: string
 }
 
+/** 下单时的一行明细（对应 OrderItemCreateSchema） */
+export interface OrderItemPayload {
+  dish_id: number
+  quantity: number
+  option_ids: number[]
+}
+
+/**
+ * 下单请求体
+ *
+ * 注意这里**没有金额字段**——价格由后端按本店实际价 + 规格加价现算。
+ * 前端算的价格只用来给收银员看，不参与下单。
+ */
+export interface OrderCreatePayload {
+  store_id: number
+  source?: string
+  remark?: string
+  /** 实际操作人；服务员用公用账号下单时必须传 */
+  operator_id?: number
+  items: OrderItemPayload[]
+}
+
 /** 订单列表（受数据范围限制：店长只看得到本店） */
 export function getOrders(params: {
   search?: string
@@ -34,6 +56,11 @@ export function getOrders(params: {
 /** 订单详情（含明细、规格、支付记录） */
 export function getOrder(id: number) {
   return request<Order>({ url: `/orders/${id}`, method: 'get' })
+}
+
+/** 下单（order:create）。必选规格没选、本店已下架、已停售都会被后端拒掉 */
+export function createOrder(data: OrderCreatePayload) {
+  return request<Order>({ url: '/orders', method: 'post', data })
 }
 
 /** 接单：待接单 → 已接单（order:receive） */

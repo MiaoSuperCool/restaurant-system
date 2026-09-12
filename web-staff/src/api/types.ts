@@ -197,6 +197,8 @@ export interface StoreMenuRow {
   daily_limit: number | null
   /** 这家店有没有对这道菜做过特殊设置 */
   has_override: boolean
+  /** 规格组：点单界面用它渲染规格选择器 */
+  option_groups: DishOptionGroup[]
 }
 
 /** 订单明细里选中的规格（对应 order_item_option） */

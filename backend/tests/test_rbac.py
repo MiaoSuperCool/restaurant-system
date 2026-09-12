@@ -33,6 +33,29 @@ def test_seed_rbac_is_idempotent(app):
         assert Role.query.count() == len(ROLES)
 
 
+def test_role_hierarchy_is_superset():
+    """角色之间是层层包含的，下属能干的事上司必须也能干
+
+    设计文档原话是「值班经理是受限版店长」。这条不变量曾经被破坏过：
+    店长漏了 order:create，结果值班经理能点单、店长反而不能——
+    一个下属有而上司没有的权限，在真实门店里会直接卡住营业。
+    """
+    specs = {spec['code']: spec for spec in ROLES}
+
+    def perms(code):
+        wanted = specs[code]['permissions']
+        if wanted == '*':
+            return {c for c, _, _ in PERMISSIONS}
+        return set(wanted)
+
+    # 服务员、后厨 ⊆ 收银员 ⊆ 值班经理 ⊆ 店长
+    # （服务员和后厨是平级，各自只会收银员权限的一个子集）
+    assert perms('waiter') <= perms('cashier'), '服务员的能力应该是收银员的子集'
+    assert perms('kitchen') <= perms('cashier'), '后厨的能力应该是收银员的子集'
+    assert perms('cashier') <= perms('shift_manager'), '值班经理应该是收银员的超集'
+    assert perms('shift_manager') <= perms('store_manager'), '店长应该是值班经理的超集'
+
+
 def test_every_role_permission_code_exists():
     """角色矩阵里写错权限码要在代码层面就拦住，不能等到运行时少给一个权限"""
     known = {code for code, _, _ in PERMISSIONS}

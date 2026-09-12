@@ -42,6 +42,29 @@ def test_menu_defaults_to_dish_base_price(client, admin_staff, login):
     assert row['daily_limit'] is None
 
 
+def test_menu_carries_option_groups(client, admin_staff, login):
+    """菜单要带规格组——点单界面靠它渲染规格选择器，不然收银员没法选大份/加料"""
+    login('admin', 'Admin123!')
+    store = _create_store(client)
+    category = _create_category(client)
+    dish = _create_dish(client, category['id'], option_groups=[
+        {'name': '份量', 'selection_type': 'single', 'is_required': True,
+         'options': [{'name': '标准', 'extra_price': '0'}, {'name': '大份', 'extra_price': '4'}]},
+        {'name': '加料', 'selection_type': 'multiple', 'is_required': False,
+         'options': [{'name': '加蛋', 'extra_price': '3'}]},
+    ])
+
+    rows = client.get(f'/api/stores/{store["id"]}/menu').get_json()['data']['dishes']
+    dish_id = next(d for d in client.get('/api/dishes').get_json()['data']['dishes']
+                   if d['name'] == dish['name'])['id']
+    row = next(r for r in rows if r['dish_id'] == dish_id)
+
+    groups = row['option_groups']
+    assert [g['name'] for g in groups] == ['份量', '加料']
+    assert groups[0]['is_required'] is True
+    assert [o['name'] for o in groups[0]['options']] == ['标准', '大份']
+
+
 def test_price_override_does_not_change_dish_base_price(client, admin_staff, login):
     """本店调价不该动到全公司的基础价——这正是「菜品和门店解耦」的意义"""
     login('admin', 'Admin123!')

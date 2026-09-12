@@ -91,11 +91,17 @@ def permission_name(code):
 # 一线员工看菜单是干活的前提（点单、出单都要先看菜），所以前厅后厨都给 menu:view
 _FRONT_LINE_MENU = ['menu:view']
 
-# 收银员的权限集合，值班经理是它的超集，抽出来避免两处各写一遍
+# 收银员的权限集合，值班经理和店长都是它的超集，抽出来避免三处各写一遍
 _CASHIER_PERMISSIONS = [
     'order:create', 'order:receive', 'order:view',
     'pay:collect', 'coupon:verify', 'member:balance:view', 'refund:apply',
     *_FRONT_LINE_MENU,
+]
+
+# 值班经理 = 收银员 + 顶班时多出来的那几项
+_SHIFT_MANAGER_PERMISSIONS = _CASHIER_PERMISSIONS + [
+    'order:cancel', 'refund:approve', 'refund:view',
+    'report:store', 'stock:view', 'schedule:manage',
 ]
 
 ROLES = [
@@ -125,21 +131,20 @@ ROLES = [
         'name': '值班经理',
         'description': '店长不在时顶班，是受限版店长：大额退款批不了',
         'data_scope': 'store',
-        'permissions': _CASHIER_PERMISSIONS + [
-            'order:cancel', 'refund:approve', 'refund:view',
-            'report:store', 'stock:view', 'schedule:manage',
-        ],
+        'permissions': _SHIFT_MANAGER_PERMISSIONS,
     },
     {
         'code': 'store_manager',
         'name': '店长',
         'description': '本店的菜单、价格、员工、库存、排班；不能发全店券、不能改总部活动、不能看别店',
         'data_scope': 'store',
-        'permissions': [
-            'store:view', 'order:view', 'refund:apply', 'refund:approve', 'refund:view',
-            'menu:view', 'menu:update', 'dish:price:edit', 'dish:online',
-            'report:store', 'stock:view', 'stock:manage',
-            'staff:manage', 'schedule:manage',
+        # **必须是值班经理的超集**——设计文档原文说值班经理是「受限版店长」，
+        # 下属能干的事上司干不了是荒唐的。test_rbac 里有条测试专门守这个不变量。
+        'permissions': _SHIFT_MANAGER_PERMISSIONS + [
+            'store:view',
+            'menu:view', 'menu:update',
+            'dish:price:edit', 'dish:online',
+            'stock:manage', 'staff:manage',
         ],
     },
     {
