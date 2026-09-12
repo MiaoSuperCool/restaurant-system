@@ -38,6 +38,11 @@ cd ../web-staff && npm install && npm run dev   # 前端 :5173
 
 浏览器打开 http://localhost:5173，用下面的账号登录。接口文档在 http://localhost:5000/apidocs/。
 
+> **`flask` 命令必须在 `backend/` 目录下运行。** Flask 靠当前目录里的 `wsgi.py` 找应用，
+> 在项目根目录跑会报 `Error: Could not locate a Flask application`。
+> 不想切目录的话，用 `flask --app backend.wsgi run --debug`。
+> （`python manage.py ...` 没有这个限制，它自己会把项目根加进 `sys.path`。）
+
 > 第 3 步的 `flask db upgrade` 只是建表；**没有 `flask seed-rbac` 的话所有角色都没有权限**，
 > 除了超级管理员谁都干不了活。
 
@@ -194,15 +199,20 @@ restaurant-system/
 ## 开发
 
 ```bash
-# 后端
+# 后端（在 backend/ 目录下）
 cd backend
+flask run --debug                      # 开发服务器 :5000
+flask db upgrade                       # 应用迁移
+flask seed-rbac                        # 同步权限码与角色（改了 rbac.py 之后跑）
+flask seed-demo                        # 灌演示数据（--reset 清空重建）
+python manage.py create-admin          # 创建超级管理员
 pytest                                 # 全部测试
 pytest --cov=app tests/                # 带覆盖率
-ruff check .                           # 代码规范
-ruff check . --fix                     # 自动修复
+ruff check . --fix                     # 代码规范
 
-# 前端
+# 前端（在 web-staff/ 目录下）
 cd web-staff
+npm run dev                            # 开发服务器 :5173，代理到 5000
 npm run typecheck                      # vue-tsc 类型检查
 npm run lint                           # ESLint
 npm run test                           # vitest 单元测试

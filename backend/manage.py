@@ -4,6 +4,14 @@ import sys
 import click
 from flask.cli import FlaskGroup
 
+# 把项目根目录放进 sys.path，这样 `python manage.py ...` 在 backend 目录下直接跑就行。
+#
+# 为什么 flask 命令不需要这句而这里需要：`flask run` 会自己从 wsgi.py 往上找，
+# 发现 backend/ 是个包就把项目根插进 sys.path；而直接跑脚本没有这套机制，
+# 不插的话 `from backend.app import ...` 会报 ModuleNotFoundError。
+# 模板原来靠手动往 venv 的 site-packages 写 .pth 文件解决——换个环境就踩坑。
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Windows 控制台默认 GBK 编码，无法输出 emoji，统一转为 UTF-8
 try:
     sys.stdout.reconfigure(encoding='utf-8')
@@ -11,9 +19,9 @@ try:
 except (AttributeError, ValueError):
     pass
 
-from wsgi import app
+from wsgi import app  # noqa: E402
 
-from backend.app import create_app
+from backend.app import create_app  # noqa: E402
 
 
 def create_app_cli():
