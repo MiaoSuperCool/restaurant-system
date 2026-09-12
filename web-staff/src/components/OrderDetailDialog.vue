@@ -1,0 +1,328 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { collectPayment, getOrder } from '@/api/orders'
+import type { Order } from '@/api/types'
+import { ORDER_STATUS_TAG, PAYMENT_METHOD_OPTIONS } from '@/constants/order'
+import { useAuthStore } from '@/stores/auth'
+import { formatPrice, formatTime } from '@/utils/format'
+
+const props = defineProps<{
+  modelValue: boolean
+  orderId: number | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+  (e: 'changed'): void
+}>()
+
+const authStore = useAuthStore()
+const canCollect = computed(() => authStore.hasPermission('pay:collect'))
+
+const order = ref<Order | null>(null)
+const loading = ref(false)
+const saving = ref(false)
+
+const payMethod = ref('cash')
+const payAmount = ref<number | null>(null)
+const transactionNo = ref('')
+
+/** 还没收的钱。用「分」做单位算一次再换回来，避开浮点误差 */
+const remaining = computed(() => {
+  if (!order.value) return 0
+  const cents = Math.round(order.value.payable_amount * 100)
+    - Math.round(order.value.paid_amount * 100)
+  return cents / 100
+})
+
+const canSubmitPayment = computed(
+  () => canCollect.value && order.value !== null
+    && order.value.status !== 'cancelled' && remaining.value > 0
+)
+
+async function load() {
+  if (props.orderId === null) return
+  loading.value = true
+  try {
+    order.value = await getOrder(props.orderId)
+    // 默认把未付部分填上——多数情况是一次付清，要组合支付再改小
+    payAmount.value = remaining.value > 0 ? remaining.value : null
+    payMethod.value = 'cash'
+    transactionNo.value = ''
+  } catch {
+    order.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(
+  () => props.modelValue,
+  (visible) => {
+    if (visible) load()
+  }
+)
+
+async function handleCollect() {
+  if (!order.value || payAmount.value === null || payAmount.value <= 0) {
+    ElMessage.warning('请填写收款金额')
+    return
+  }
+  saving.value = true
+  try {
+    const result = await collectPayment(order.value.id, {
+      method: payMethod.value,
+      amount: payAmount.value,
+      transaction_no: transactionNo.value.trim(),
+    })
+    ElMessage.success(
+      result.order.is_paid ? '已收清' : `已收款，还剩 ${formatPrice(
+        result.order.payable_amount - result.order.paid_amount)}`
+    )
+    emit('changed')
+    await load()
+  } catch {
+    // 拦截器已提示
+  } finally {
+    saving.value = false
+  }
+}
+
+function handleClose() {
+  emit('update:modelValue', false)
+}
+</script>
+
+<template>
+  <el-dialog
+    :model-value="modelValue"
+    title="订单详情"
+    width="720px"
+    @close="handleClose"
+  >
+    <div v-loading="loading">
+      <template v-if="order">
+        <!-- 头部：单号 + 状态 -->
+        <div class="order-head">
+          <div>
+            <span class="order-no">{{ order.order_no }}</span>
+            <el-tag
+              :type="ORDER_STATUS_TAG[order.status] ?? 'info'"
+              class="status-tag"
+              disable-transitions
+            >
+              {{ order.status_label }}
+            </el-tag>
+          </div>
+          <span class="head-meta">
+            {{ order.store_name }} · {{ order.source_label }} · {{ formatTime(order.created_at) }}
+          </span>
+        </div>
+
+        <div class="meta-row">
+          <span>操作人：{{ order.operator_name || '顾客自助' }}</span>
+          <span v-if="order.remark">备注：{{ order.remark }}</span>
+        </div>
+
+        <!-- 明细 -->
+        <h4 class="section-title">菜品明细</h4>
+        <el-table :data="order.items" size="small" class="detail-table">
+          <el-table-column prop="dish_name" label="菜品" min-width="120" />
+          <el-table-column label="规格" min-width="140">
+            <template #default="{ row }">
+              <span v-if="row.options_text">{{ row.options_text }}</span>
+              <span v-else class="muted">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="单价" width="90" align="right">
+            <template #default="{ row }">{{ formatPrice(row.unit_price) }}</template>
+          </el-table-column>
+          <el-table-column prop="quantity" label="数量" width="60" align="center" />
+          <el-table-column label="小计" width="100" align="right">
+            <template #default="{ row }">{{ formatPrice(row.subtotal) }}</template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 金额 -->
+        <div class="amounts">
+          <div class="amount-row">
+            <span>合计</span><span>{{ formatPrice(order.total_amount) }}</span>
+          </div>
+          <div v-if="order.discount_amount > 0" class="amount-row">
+            <span>优惠</span><span>-{{ formatPrice(order.discount_amount) }}</span>
+          </div>
+          <div class="amount-row total">
+            <span>应付</span><span>{{ formatPrice(order.payable_amount) }}</span>
+          </div>
+          <div class="amount-row">
+            <span>已收</span>
+            <span :class="{ unpaid: remaining > 0 }">{{ formatPrice(order.paid_amount) }}</span>
+          </div>
+          <div v-if="remaining > 0" class="amount-row remaining">
+            <span>还差</span><span>{{ formatPrice(remaining) }}</span>
+          </div>
+        </div>
+
+        <!-- 支付记录 -->
+        <h4 class="section-title">支付记录</h4>
+        <el-table v-if="order.payments?.length" :data="order.payments" size="small" class="detail-table">
+          <el-table-column prop="payment_no" label="流水号" min-width="200" />
+          <el-table-column prop="method_label" label="方式" width="90" />
+          <el-table-column label="金额" width="100" align="right">
+            <template #default="{ row }">{{ formatPrice(row.amount) }}</template>
+          </el-table-column>
+          <el-table-column prop="operator_name" label="收款人" width="90" />
+          <el-table-column label="时间" width="140">
+            <template #default="{ row }">{{ formatTime(row.paid_at) }}</template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="muted">还没有收款记录</p>
+
+        <!-- 收款 -->
+        <template v-if="canSubmitPayment">
+          <h4 class="section-title">收款</h4>
+          <div class="collect-row">
+            <el-select v-model="payMethod" class="collect-method">
+              <el-option
+                v-for="item in PAYMENT_METHOD_OPTIONS"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+            <el-input-number
+              v-model="payAmount"
+              :min="0.01"
+              :max="remaining"
+              :precision="2"
+              :step="1"
+              class="collect-amount"
+            />
+            <el-input
+              v-model="transactionNo"
+              placeholder="第三方流水号（现金可不填）"
+              class="collect-txn"
+            />
+            <el-button type="primary" :loading="saving" @click="handleCollect">收款</el-button>
+          </div>
+          <p class="hint">
+            一个订单可以收多笔：组合支付（储值 + 现金）、先定金后尾款，分几次收都行。
+            第三方流水号是财务对账的依据，线上支付务必填。
+          </p>
+        </template>
+        <p v-else-if="!canCollect" class="hint">没有收款权限</p>
+      </template>
+    </div>
+
+    <template #footer>
+      <el-button @click="handleClose">关闭</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<style scoped>
+.order-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.order-no {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.status-tag {
+  margin-left: 8px;
+}
+
+.head-meta {
+  font-size: 12px;
+  color: #8a8a8a;
+}
+
+.meta-row {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8a8a8a;
+  margin: 18px 0 8px;
+}
+
+.detail-table {
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+.amounts {
+  width: 260px;
+  margin-left: auto;
+  margin-top: 14px;
+}
+
+.amount-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #666;
+  padding: 3px 0;
+}
+
+.amount-row.total {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f1f1f;
+  border-top: 1px solid #e5e5e5;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.unpaid {
+  color: #c45656;
+}
+
+.amount-row.remaining {
+  font-weight: 600;
+  color: #c45656;
+}
+
+.collect-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.collect-method {
+  width: 120px;
+}
+
+.collect-amount {
+  width: 140px;
+}
+
+.collect-txn {
+  flex: 1;
+}
+
+.muted {
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.hint {
+  font-size: 12px;
+  color: #8c8c8c;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+</style>

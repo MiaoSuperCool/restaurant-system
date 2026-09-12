@@ -16,6 +16,8 @@ const router = useRouter()
  */
 const ALL_MENUS = [
   { name: '主页面', path: '/', permissions: [] as string[] },
+  // 订单放前面：收银员一天到晚都开着这一页
+  { name: '订单', path: '/orders', permissions: ['order:view'] },
   { name: '门店', path: '/stores', permissions: ['store:view'] },
   { name: '菜品', path: '/dishes', permissions: MENU_MANAGE_PERMISSIONS },
   { name: '分类', path: '/categories', permissions: MENU_MANAGE_PERMISSIONS },

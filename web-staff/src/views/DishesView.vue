@@ -7,6 +7,7 @@ import type { CategoryOption, Dish } from '@/api/types'
 import DishFormDialog from '@/components/DishFormDialog.vue'
 import { DISH_STATUS_TAG } from '@/constants/menu'
 import { useAuthStore } from '@/stores/auth'
+import { formatPrice } from '@/utils/format'
 
 const authStore = useAuthStore()
 
@@ -95,10 +96,6 @@ async function handleDelete(dish: Dish) {
 function handleDialogSuccess() {
   dialogVisible.value = false
   loadDishes()
-}
-
-function formatPrice(value: number): string {
-  return `¥${value.toFixed(2)}`
 }
 
 onMounted(() => {

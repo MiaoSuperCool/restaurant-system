@@ -56,22 +56,36 @@ describe('Sidebar 菜单按权限渲染', () => {
     expect(await menuTexts()).toEqual(['主页面'])
   })
 
-  it('店长看到门店、菜品、分类和员工，看不到审计', async () => {
-    // 店长有 store:view + menu:update + dish:price:edit + staff:manage
-    loginAs(false, ['store:view', 'menu:update', 'dish:price:edit', 'staff:manage'])
-    expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '门店菜单', '员工'])
+  it('后厨只有 order:view，看到"主页面"和"订单"', async () => {
+    loginAs(false, ['menu:view', 'order:view'])
+    expect(await menuTexts()).toEqual(['主页面', '订单'])
   })
 
-  it('收银员有 menu:view 但看不到菜单管理', async () => {
+  it('店长看到除审计外的全部菜单', async () => {
+    // 店长的权限：store:view + order:view + menu:update + dish:* + staff:manage
+    loginAs(false, ['store:view', 'order:view', 'menu:update', 'dish:price:edit', 'staff:manage'])
+    expect(await menuTexts()).toEqual([
+      '主页面',
+      '订单',
+      '门店',
+      '菜品',
+      '分类',
+      '门店菜单',
+      '员工',
+    ])
+  })
+
+  it('收银员看得到订单，看不到菜单管理和员工管理', async () => {
     // menu:view 只是「看菜单」（点单要用），不是「管菜单」
-    loginAs(false, ['menu:view', 'order:create', 'pay:collect'])
-    expect(await menuTexts()).toEqual(['主页面'])
+    loginAs(false, ['menu:view', 'order:create', 'order:view', 'pay:collect'])
+    expect(await menuTexts()).toEqual(['主页面', '订单'])
   })
 
   it('老板看到全部菜单', async () => {
     loginAs(true, [])
     expect(await menuTexts()).toEqual([
       '主页面',
+      '订单',
       '门店',
       '菜品',
       '分类',

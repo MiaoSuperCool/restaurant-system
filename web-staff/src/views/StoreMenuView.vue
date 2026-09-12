@@ -7,6 +7,7 @@ import { getStoreMenu, resetStoreDish, setStoreDish } from '@/api/storeMenu'
 import type { StoreDishPayload } from '@/api/storeMenu'
 import type { CategoryOption, StoreMenuRow, StoreOption } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { formatPrice } from '@/utils/format'
 
 const authStore = useAuthStore()
 
@@ -106,10 +107,6 @@ async function handleReset(row: StoreMenuRow) {
   } finally {
     loadMenu()
   }
-}
-
-function formatPrice(value: number): string {
-  return `¥${value.toFixed(2)}`
 }
 
 onMounted(async () => {

@@ -13,6 +13,13 @@ const router = createRouter({
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         {
+          path: 'orders',
+          name: 'orders',
+          component: () => import('@/views/OrdersView.vue'),
+          // 收银员、值班经理、店长、财务都有 order:view
+          meta: { permissions: ['order:view'] },
+        },
+        {
           path: 'stores',
           name: 'stores',
           component: () => import('@/views/StoresView.vue'),

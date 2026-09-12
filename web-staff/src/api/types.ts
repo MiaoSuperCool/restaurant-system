@@ -199,6 +199,76 @@ export interface StoreMenuRow {
   has_override: boolean
 }
 
+/** 订单明细里选中的规格（对应 order_item_option） */
+export interface OrderItemOption {
+  id: number
+  /** 保留的引用，供「加蛋卖了多少份」这类统计 */
+  dish_option_id: number
+  group_name: string
+  name: string
+  extra_price: number
+}
+
+/** 订单明细的一行（对应 order_item） */
+export interface OrderItem {
+  id: number
+  dish_id: number
+  /** 下单那一刻的快照：菜品改名后历史订单还是老名字 */
+  dish_name: string
+  unit_price: number
+  quantity: number
+  subtotal: number
+  /** 规格文本快照，如「大份,特辣,加蛋」 */
+  options_text: string
+  options: OrderItemOption[]
+}
+
+/** 支付记录（对应 payment.py） */
+export interface Payment {
+  id: number
+  order_id: number
+  method: string
+  method_label: string
+  status: string
+  status_label: string
+  amount: number
+  /** 我们自己的支付流水号，挂在订单号后面（xxx-P01） */
+  payment_no: string
+  /** 第三方流水号（微信支付单号等）；现金为空。对账靠它 */
+  transaction_no: string
+  operator_id: number | null
+  operator_name: string
+  paid_at: string | null
+  created_at: string | null
+}
+
+/** 订单（对应 order.py） */
+export interface Order {
+  id: number
+  order_no: string
+  store_id: number
+  store_name: string | null
+  member_id: number | null
+  source: string
+  source_label: string
+  status: string
+  status_label: string
+  total_amount: number
+  discount_amount: number
+  payable_amount: number
+  /** 已收金额；可能分多笔累加 */
+  paid_amount: number
+  is_paid: boolean
+  operator_id: number | null
+  /** 实际操作人（公用账号代点单时是选中的那个人，不是账号本身） */
+  operator_name: string
+  remark: string
+  created_at: string | null
+  /** 只有详情接口带 */
+  items?: OrderItem[]
+  payments?: Payment[]
+}
+
 /** 标准分页信息 */
 export interface Pagination {
   page: number
