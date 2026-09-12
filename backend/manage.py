@@ -83,6 +83,37 @@ def seed_rbac_command():
     )
 
 
+# 灌演示数据
+@cli.command('seed-demo')
+@click.option('--reset', is_flag=True, help='先清空已有的订单/支付数据再重建')
+def seed_demo_command(reset):
+    """灌演示数据：6 家门店、一套完整菜单、各角色账号、一批订单
+
+    别人 clone 下来跑一遍这个，系统里就有东西可看了。
+
+    幂等：门店/菜品/账号已存在就跳过，可以反复执行；
+    订单每次都会新增，要重来一遍加 --reset。
+
+    注意先后顺序：新建库要先 flask db upgrade → flask seed-rbac → 再灌演示数据。
+    """
+    if reset:
+        click.confirm('⚠️ --reset 会删掉所有订单和支付记录，确定吗？', abort=True)
+
+    from backend.app.demo import DEMO_PASSWORD, seed_demo
+
+    stats = seed_demo(reset=reset)
+    click.echo(
+        f"✅ 演示数据就绪：门店 {stats['stores']}、分类 {stats['categories']}、"
+        f"菜品 {stats['dishes']}、账号 {stats['staff']}、"
+        f"门店定价 {stats['overrides']}、订单 {stats['orders']}、"
+        f"支付 {stats['payments']}"
+    )
+    if stats['staff']:
+        click.echo(f'   演示账号密码统一是 {DEMO_PASSWORD}')
+        click.echo('   老板 laoban / 运营 yunying / 财务 caiwu / 店长 dianzhang')
+        click.echo('   值班 zhiban / 收银 shouyin / 服务 fuwuyuan / 后厨 houcu')
+
+
 # 重置数据库
 @cli.command('reset-db')
 @click.confirmation_option(prompt='⚠️ 确定要重置数据库吗？所有数据将被删除！')

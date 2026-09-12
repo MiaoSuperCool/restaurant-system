@@ -70,7 +70,7 @@ class OrderService:
     # ---------- 下单 ----------
 
     @staticmethod
-    def _next_order_no(store):
+    def next_order_no(store):
         """单号：门店码-日期-当日序号，如 S001-20260912-0001
 
         做成可读的而不是 UUID——顾客电话里报单号、店员在屏幕上一眼找单子都要用。
@@ -88,11 +88,14 @@ class OrderService:
         return f'{prefix}{seq:04d}'
 
     @staticmethod
-    def _build_item(dish, override, quantity, option_ids):
-        """校验规格 + 算这一行的钱，返回 (OrderItem, [OrderItemOption])
+    def build_order_item(dish, override, quantity, option_ids):
+        """校验规格 + 算这一行的钱，返回一条 OrderItem（含它选的规格）
 
         **价格全部从数据库现算**：本店实际价（门店覆盖价或基础价）+ 各选项加价。
         前端传来的任何金额都不采信。
+
+        公开方法而不是私有的：演示数据脚本（app/demo.py）也要用它造订单，
+        不能另写一份算价逻辑——两处各算各的，迟早会漂移。
         """
         groups = list(dish.option_groups)
         option_map = {
@@ -161,7 +164,7 @@ class OrderService:
 
             # 单开一个事务：订单和明细要么一起成功，要么一起失败
             order = Order(
-                order_no=OrderService._next_order_no(store),
+                order_no=OrderService.next_order_no(store),
                 store_id=store.id,
                 source=data['source'],
                 remark=data.get('remark', ''),
@@ -194,7 +197,7 @@ class OrderService:
                 if override and not override.is_available:
                     raise BusinessError(f'「{dish.name}」在这家门店已下架，点不了')
 
-                item = OrderService._build_item(
+                item = OrderService.build_order_item(
                     dish, override, raw['quantity'], raw['option_ids'] or []
                 )
                 order.items.append(item)
