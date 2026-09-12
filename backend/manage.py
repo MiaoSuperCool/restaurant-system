@@ -63,6 +63,26 @@ def create_admin(password, username, name, email, mobile):
     click.echo(f'✅ 管理员创建成功: {username}')
 
 
+# 同步权限码与预置角色
+@cli.command('seed-rbac')
+def seed_rbac_command():
+    """同步权限目录与预置角色（幂等，可反复执行）
+
+    改了 backend/app/rbac.py 里的权限码或角色矩阵之后跑一次，
+    新增的权限码会补进库，预置角色的权限会被改回设计文档定义的样子。
+
+    注意：新建数据库后必须跑一次，否则所有角色都没有权限——
+    只有 is_admin 的超级管理员账号能用。
+    """
+    from backend.app.rbac import seed_rbac
+
+    created_permissions, created_roles, updated_roles = seed_rbac()
+    click.echo(
+        f'✅ 权限同步完成：新增权限 {created_permissions} 个，'
+        f'新建角色 {created_roles} 个，更新角色 {updated_roles} 个'
+    )
+
+
 # 重置数据库
 @cli.command('reset-db')
 @click.confirmation_option(prompt='⚠️ 确定要重置数据库吗？所有数据将被删除！')

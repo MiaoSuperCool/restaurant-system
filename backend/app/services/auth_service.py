@@ -10,6 +10,20 @@ from backend.app.services.staff_service import StaffService
 
 class AuthService:
     @staticmethod
+    def session_payload(staff):
+        """登录态要下发给前端的东西（登录接口和首页接口共用）
+
+        permissions 和 data_scope 一并下发，前端才知道该显示哪些菜单、
+        该不该渲染「新增/编辑」按钮。注意这纯粹是体验层——后端每个接口
+        都会重新判权，前端就算把 permissions 改了也拿不到数据。
+        """
+        return {
+            'staff': staff.to_dict(),
+            'permissions': staff.permission_codes(),
+            'data_scope': staff.data_scope,
+        }
+
+    @staticmethod
     def login(username, password):
         user = StaffService.get_staff_by_username(username)
         if not user:

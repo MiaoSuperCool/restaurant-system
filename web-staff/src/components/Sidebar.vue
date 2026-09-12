@@ -1,4 +1,4 @@
-<!-- 左侧导航（按角色渲染菜单 + 点击高亮）-->
+<!-- 左侧导航（按权限渲染菜单 + 点击高亮）-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -8,18 +8,23 @@ const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-/** 菜单项：所有角色都有主页面；门店/员工/审计日志仅管理员可见 */
-const menus = computed(() => {
-  const base = [{ name: '主页面', path: '/' }]
-  if (authStore.isAdmin) {
-    base.push(
-      { name: '门店', path: '/stores' },
-      { name: '员工', path: '/staff' },
-      { name: '审计日志', path: '/audit' }
-    )
-  }
-  return base
-})
+/**
+ * 全部菜单项，每项声明自己需要哪些权限码（数组 = 任一即可，空数组 = 登录就能看）
+ *
+ * 加新页面时在这里补一项，权限码要和后端的 @permission_required 对得上。
+ */
+const ALL_MENUS = [
+  { name: '主页面', path: '/', permissions: [] as string[] },
+  { name: '门店', path: '/stores', permissions: ['store:view'] },
+  { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
+  { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
+]
+
+const menus = computed(() =>
+  ALL_MENUS.filter(
+    (item) => item.permissions.length === 0 || authStore.hasAnyPermission(item.permissions)
+  )
+)
 
 function isActive(path: string): boolean {
   return route.path === path

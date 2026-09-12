@@ -1,10 +1,11 @@
 import { request } from './request'
 import type { Staff } from './types'
 
-/** 首页数据（模板通用：新项目在这里扩展你的首页结构） */
+/** 首页数据：登录态（与登录接口同一份结构）+ 示例统计 */
 export interface DashboardData {
   staff: Staff
-  is_admin: boolean
+  permissions: string[]
+  data_scope: string
   staff_count: number
   store_count: number
 }

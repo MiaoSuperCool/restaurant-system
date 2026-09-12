@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteStore, getStores } from '@/api/stores'
 import type { Store } from '@/api/types'
 import { BUSINESS_STATUS_TAG } from '@/constants/store'
 import StoreFormDialog from '@/components/StoreFormDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+
+/**
+ * 门店增删改是 store:manage（按设计文档是老板专属）
+ *
+ * 运营主管只有 store:view，进得来这一页但只能看——所以按钮要按权限渲染。
+ * 后端接口上也挂了 @permission_required('store:manage')，这里只是体验层。
+ */
+const canManage = computed(() => authStore.hasPermission('store:manage'))
 
 const stores = ref<Store[]>([])
 const total = ref(0)
@@ -88,6 +99,7 @@ onMounted(loadStores)
       />
       <el-button @click="handleSearch">搜索</el-button>
       <el-button
+        v-if="canManage"
         type="primary"
         class="ml-auto add-btn"
         title="新增门店"
@@ -112,7 +124,7 @@ onMounted(loadStores)
           </template>
         </el-table-column>
         <el-table-column prop="run_mode_label" label="运行模式" width="100" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column v-if="canManage" label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" class="btn-delete" @click="handleDelete(row)">删除</el-button>
@@ -132,6 +144,7 @@ onMounted(loadStores)
     </div>
 
     <StoreFormDialog
+      v-if="canManage"
       v-model="dialogVisible"
       :store="editingStore"
       @success="handleDialogSuccess"

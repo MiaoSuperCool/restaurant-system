@@ -11,20 +11,39 @@ RESOURCE = 'store'
 
 class StoreService:
     @staticmethod
-    def get_all_stores():
-        return Store.query.order_by(Store.code).all()
+    def get_all_stores(store_ids=None):
+        """store_ids 为 None 表示不限门店（全部范围）；列表则只返回其中的门店"""
+        query = Store.query
+        if store_ids is not None:
+            query = query.filter(Store.id.in_(store_ids))
+        return query.order_by(Store.code).all()
 
     @staticmethod
     def get_all_count():
         return Store.query.count()
 
     @staticmethod
+    def assert_in_scope(store):
+        """数据范围检查：本店范围的角色只能碰自己归属的门店
+
+        门店管理接口（改/删）用得上。权限码管的「能不能管门店」，
+        这里管的是「能管哪几家」。
+        """
+        allowed = current_user.accessible_store_ids()
+        if allowed is not None and store.id not in allowed:
+            raise BusinessError('无权操作其他门店的数据', status_code=403)
+
+    @staticmethod
     def get_store_by_id(store_id):
         return db.session.get(Store, store_id)
 
     @staticmethod
-    def get_paginated_stores(page=1, per_page=10, search=None):
+    def get_paginated_stores(page=1, per_page=10, search=None, store_ids=None):
         query = Store.query
+
+        # 数据范围：店长/值班经理只看得到自己那家店，运营主管和老板不限
+        if store_ids is not None:
+            query = query.filter(Store.id.in_(store_ids))
 
         if search:
             query = query.filter(
@@ -91,6 +110,8 @@ class StoreService:
             store = StoreService.get_store_by_id(store_id)
             if not store:
                 raise NotFoundError('门店不存在')
+
+            StoreService.assert_in_scope(store)
 
             # 先留一份改动前的快照，审计日志要记变动前后值
             old_value = store.to_dict()
@@ -181,6 +202,8 @@ class StoreService:
             store = StoreService.get_store_by_id(store_id)
             if not store:
                 raise NotFoundError('门店不存在')
+
+            StoreService.assert_in_scope(store)
 
             # 门店一旦挂上订单/员工/门店菜品就不能删，否则那些历史数据会变成
             # 找不到门店的孤儿，对账也就对不上了。这时正确的下线方式是

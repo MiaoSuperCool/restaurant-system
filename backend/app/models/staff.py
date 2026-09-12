@@ -11,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.app.extensions import db
 from backend.app.models.base import BaseModel
+from backend.app.models.role import Role
 
 
 class Staff(UserMixin, BaseModel):
@@ -46,6 +47,14 @@ class Staff(UserMixin, BaseModel):
     )
     store = db.relationship('Store', backref=db.backref('staff_members', lazy='dynamic'))
 
+    # 角色（多对多）。secondary 用表名字符串，省得在模型之间来回 import
+    roles = db.relationship(
+        'Role',
+        secondary='staff_role',
+        backref=db.backref('members', lazy='dynamic'),
+        order_by='Role.sort_order',
+    )
+
     employment_type = db.Column(db.String(20), nullable=False, default=TYPE_FULL_TIME)
 
     # 公用账号：服务员共用一台设备登录时用。开了这个字段，每次下单必须另外记录
@@ -64,6 +73,58 @@ class Staff(UserMixin, BaseModel):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    # ---------- 判权 ----------
+    # 真正的权限边界在这一层，前端的菜单/按钮隐藏只是体验层。
+
+    def _owned_permission_codes(self):
+        """角色带来的权限码集合（不含超级管理员旁路）"""
+        return {permission.code for role in self.roles for permission in role.permissions}
+
+    def permission_codes(self):
+        """该员工的全部权限码（排序后）。
+
+        超级管理员（is_admin）返回整个权限目录——它是旁路，不是角色。
+        正常授权走角色，这个开关只留给初始管理员账号。
+        """
+        if self.is_admin:
+            from backend.app.models.permission import Permission
+            return [p.code for p in
+                    Permission.query.order_by(Permission.sort_order).all()]
+        return sorted(self._owned_permission_codes())
+
+    def has_permission(self, code):
+        if self.is_admin:
+            return True
+        return code in self._owned_permission_codes()
+
+    def has_any_permission(self, *codes):
+        if self.is_admin:
+            return True
+        owned = self._owned_permission_codes()
+        return any(code in owned for code in codes)
+
+    @property
+    def data_scope(self):
+        """能碰多大范围的数据（本店 / 全部）
+
+        只要有一个角色是「全部」，就是全部——同一个人可以既当店长又兼运营。
+        """
+        if self.is_admin:
+            return Role.SCOPE_ALL
+        if any(role.data_scope == Role.SCOPE_ALL for role in self.roles):
+            return Role.SCOPE_ALL
+        return Role.SCOPE_STORE
+
+    def accessible_store_ids(self):
+        """能访问的门店 id 列表；返回 None 表示不限门店（全部范围）
+
+        总部账号（store_id 为空）如果是「本店」范围，说明角色配错了——
+        这种账号能访问的门店为空列表，什么都看不到，不会误放开。
+        """
+        if self.data_scope == Role.SCOPE_ALL:
+            return None
+        return [self.store_id] if self.store_id is not None else []
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -80,5 +141,9 @@ class Staff(UserMixin, BaseModel):
             'is_shared': self.is_shared,
             'is_active': self.is_active,
             'is_admin': self.is_admin,
+            'roles': [
+                {'id': role.id, 'code': role.code, 'name': role.name}
+                for role in self.roles
+            ],
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

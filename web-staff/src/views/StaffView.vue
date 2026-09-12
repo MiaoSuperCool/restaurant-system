@@ -115,8 +115,22 @@ onMounted(loadStaff)
         <el-table-column label="状态" width="70">
           <template #default="{ row }">{{ row.is_active ? '启用' : '禁用' }}</template>
         </el-table-column>
-        <el-table-column label="角色" width="90">
-          <template #default="{ row }">{{ row.is_admin ? '超级管理员' : '员工' }}</template>
+        <el-table-column label="角色" min-width="150">
+          <template #default="{ row }">
+            <span v-if="row.is_admin" class="super-admin">超级管理员</span>
+            <template v-else-if="row.roles.length">
+              <el-tag
+                v-for="role in row.roles"
+                :key="role.id"
+                size="small"
+                class="role-tag"
+                disable-transitions
+              >
+                {{ role.name }}
+              </el-tag>
+            </template>
+            <el-tag v-else type="info" size="small" disable-transitions>未分配</el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
@@ -182,6 +196,16 @@ onMounted(loadStaff)
   padding: 0;
   font-size: 20px;
   line-height: 1;
+}
+
+.role-tag {
+  margin-right: 4px;
+}
+
+/* 超级管理员是旁路，不是角色，跟普通角色标签区分开 */
+.super-admin {
+  font-weight: 600;
+  color: #1f1f1f;
 }
 
 /* 删除按钮：黑边框 + 灰底白字；悬停变黑底白字 */

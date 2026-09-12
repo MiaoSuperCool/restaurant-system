@@ -21,6 +21,11 @@ class StaffCreateSchema(Schema):
         validate=one_of(Staff.TYPE_LABELS),
         metadata={'description': '用工类型：全职 / 兼职'},
     )
+    role_ids = fields.List(
+        fields.Integer(),
+        load_default=list,
+        metadata={'description': '角色 id 列表；权限和数据范围都由角色决定'},
+    )
     is_shared = fields.Boolean(
         load_default=False,
         metadata={'description': '公用账号（服务员共用设备登录）'},
@@ -42,6 +47,7 @@ class StaffUpdateSchema(Schema):
     password = fields.Str(validate=validate.Length(min=6, max=128))
     store_id = fields.Integer(allow_none=True)
     employment_type = fields.Str(validate=one_of(Staff.TYPE_LABELS))
+    role_ids = fields.List(fields.Integer())
     is_shared = fields.Boolean()
     is_active = fields.Boolean()
     is_admin = fields.Boolean()

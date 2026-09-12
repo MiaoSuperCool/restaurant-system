@@ -6,11 +6,11 @@ import type { Staff } from '@/api/types'
 import Sidebar from '@/components/Sidebar.vue'
 import { useAuthStore } from '@/stores/auth'
 
-function makeStaff(isAdmin: boolean): Staff {
+function makeStaff(isAdmin = false): Staff {
   return {
     id: isAdmin ? 1 : 2,
-    username: isAdmin ? 'admin' : 'staff',
-    real_name: isAdmin ? '管理员' : '普通员工',
+    username: isAdmin ? 'laoban' : 'dianzhang',
+    real_name: isAdmin ? '老板' : '店长',
     email: 'user@example.com',
     mobile: '13800138000',
     store_id: null,
@@ -20,8 +20,14 @@ function makeStaff(isAdmin: boolean): Staff {
     is_shared: false,
     is_active: true,
     is_admin: isAdmin,
+    roles: [],
     created_at: null,
   }
+}
+
+/** 模拟一次登录：写入员工和权限 */
+function loginAs(isAdmin: boolean, permissions: string[]) {
+  useAuthStore().setSession(makeStaff(isAdmin), permissions, isAdmin ? 'all' : 'store')
 }
 
 /** Sidebar 内部用到 useRoute/useRouter，挂载时需要真实的 router 实例 */
@@ -32,33 +38,36 @@ function makeRouter() {
   })
 }
 
-describe('Sidebar 菜单按角色渲染', () => {
+async function menuTexts() {
+  const router = makeRouter()
+  const wrapper = mount(Sidebar, { global: { plugins: [router] } })
+  await router.isReady()
+  return wrapper.findAll('.menu-item').map((item) => item.text())
+}
+
+describe('Sidebar 菜单按权限渲染', () => {
   beforeEach(() => {
+    localStorage.clear()
     setActivePinia(createPinia())
   })
 
-  it('普通员工只看到"主页面"', async () => {
-    const router = makeRouter()
-    useAuthStore().staff = makeStaff(false)
-
-    const wrapper = mount(Sidebar, { global: { plugins: [router] } })
-    await router.isReady()
-
-    expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual(['主页面'])
+  it('没有任何权限的员工只看到"主页面"', async () => {
+    loginAs(false, [])
+    expect(await menuTexts()).toEqual(['主页面'])
   })
 
-  it('管理员额外看到"门店"、"员工"和"审计日志"', async () => {
-    const router = makeRouter()
-    useAuthStore().staff = makeStaff(true)
+  it('店长（有 store:view，没有员工管理和审计）看到"主页面"和"门店"', async () => {
+    loginAs(false, ['store:view', 'dish:price:edit', 'staff:manage'])
+    expect(await menuTexts()).toEqual(['主页面', '门店', '员工'])
+  })
 
-    const wrapper = mount(Sidebar, { global: { plugins: [router] } })
-    await router.isReady()
+  it('老板看到全部菜单', async () => {
+    loginAs(true, [])
+    expect(await menuTexts()).toEqual(['主页面', '门店', '员工', '审计日志'])
+  })
 
-    expect(wrapper.findAll('.menu-item').map((item) => item.text())).toEqual([
-      '主页面',
-      '门店',
-      '员工',
-      '审计日志',
-    ])
+  it('运营主管有 store:view 但没有员工管理和审计', async () => {
+    loginAs(false, ['store:view', 'menu:create', 'campaign:manage'])
+    expect(await menuTexts()).toEqual(['主页面', '门店'])
   })
 })

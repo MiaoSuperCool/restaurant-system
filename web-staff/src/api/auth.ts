@@ -1,9 +1,13 @@
 import { request } from './request'
 import type { Staff } from './types'
 
-/** 登录接口返回的 data */
+/** 登录接口返回的 data（/index 返回同样的结构，前端刷新时用它同步权限） */
 export interface LoginResult {
   staff: Staff
+  /** 该员工拥有的全部权限码，前端靠它决定显示哪些菜单和按钮 */
+  permissions: string[]
+  /** 数据范围：store = 只能碰本店数据，all = 全部 */
+  data_scope: string
 }
 
 /** 登录 */

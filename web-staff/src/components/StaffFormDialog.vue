@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getRoles } from '@/api/roles'
 import { createStaff, updateStaff } from '@/api/staff'
 import { getStoreOptions } from '@/api/stores'
-import type { Staff, StoreOption } from '@/api/types'
+import type { Role, Staff, StoreOption } from '@/api/types'
 import { EMPLOYMENT_TYPE_OPTIONS } from '@/constants/staff'
 
 const props = defineProps<{
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 
 const saving = ref(false)
 const storeOptions = ref<StoreOption[]>([])
+const roleOptions = ref<Role[]>([])
 
 // 字段名与 StaffCreateSchema 保持一致
 const form = reactive({
@@ -27,6 +29,7 @@ const form = reactive({
   mobile: '',
   password: '',
   store_id: null as number | null,
+  role_ids: [] as number[],
   employment_type: 'full_time',
   is_shared: false,
   is_active: true,
@@ -42,6 +45,15 @@ async function loadStoreOptions() {
   }
 }
 
+async function loadRoleOptions() {
+  try {
+    const data = await getRoles()
+    roleOptions.value = data.roles
+  } catch {
+    // 拦截器已提示
+  }
+}
+
 watch(
   () => props.modelValue,
   (visible) => {
@@ -52,11 +64,13 @@ watch(
     form.mobile = props.staff?.mobile ?? ''
     form.password = ''
     form.store_id = props.staff?.store_id ?? null
+    form.role_ids = props.staff?.roles.map((role) => role.id) ?? []
     form.employment_type = props.staff?.employment_type ?? 'full_time'
     form.is_shared = props.staff?.is_shared ?? false
     form.is_active = props.staff?.is_active ?? true
     form.is_admin = props.staff?.is_admin ?? false
     loadStoreOptions()
+    loadRoleOptions()
   }
 )
 
@@ -82,6 +96,7 @@ async function handleSubmit() {
       email: form.email.trim(),
       mobile: form.mobile.trim(),
       store_id: form.store_id,
+      role_ids: form.role_ids,
       employment_type: form.employment_type,
       is_shared: form.is_shared,
       is_active: form.is_active,
@@ -148,6 +163,26 @@ onMounted(loadStoreOptions)
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="角色">
+        <el-select
+          v-model="form.role_ids"
+          multiple
+          clearable
+          placeholder="不选表示没有任何权限"
+          class="full-width"
+        >
+          <el-option
+            v-for="role in roleOptions"
+            :key="role.id"
+            :label="`${role.name}（${role.data_scope_label}）`"
+            :value="role.id"
+          >
+            <span>{{ role.name }}（{{ role.data_scope_label }}）</span>
+            <span class="role-desc">{{ role.description }}</span>
+          </el-option>
+        </el-select>
+        <div class="field-hint">权限和数据范围都由角色决定，可以兼多个角色</div>
+      </el-form-item>
       <el-form-item label="用工类型">
         <el-select v-model="form.employment_type" class="full-width">
           <el-option
@@ -187,5 +222,12 @@ onMounted(loadStoreOptions)
   color: #8c8c8c;
   line-height: 1.5;
   margin-top: 4px;
+}
+
+.role-desc {
+  float: right;
+  font-size: 12px;
+  color: #a0a0a0;
+  margin-left: 16px;
 }
 </style>

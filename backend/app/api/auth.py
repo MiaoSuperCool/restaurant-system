@@ -23,7 +23,7 @@ def login(data):
         return jsonify(api_response(
             success=True,
             message='用户已登陆',
-            data={'staff': current_user.to_dict()}
+            data=AuthService.session_payload(current_user)
         ))
 
     staff = AuthService.login(data['username'], data['password'])
@@ -31,7 +31,7 @@ def login(data):
     return jsonify(api_response(
         success=True,
         message='登录成功',
-        data={'staff': staff.to_dict()}
+        data=AuthService.session_payload(staff)
     ))
 
 

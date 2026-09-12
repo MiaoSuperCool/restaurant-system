@@ -52,13 +52,12 @@ def test_login_required(client, app):
     assert resp.status_code == 401
 
 
-def test_non_admin_can_read_but_not_write(client, normal_staff, login):
-    """普通员工能拉门店列表（各表单要选归属门店），但改不了"""
+def test_staff_without_role_is_denied(client, normal_staff, login):
+    """没分配角色的员工什么都看不到——权限来自角色，不是「登录了就有」"""
     login('staff', 'Staff123!')
 
-    assert client.get('/api/stores').status_code == 200
-    assert client.get('/api/stores/options').status_code == 200
-
+    assert client.get('/api/stores').status_code == 403
+    assert client.get('/api/stores/options').status_code == 403
     assert _create_store(client).status_code == 403
 
 

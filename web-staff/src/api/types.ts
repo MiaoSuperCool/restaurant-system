@@ -4,6 +4,38 @@
  */
 
 
+/** 权限（对应 permission.py） */
+export interface Permission {
+  id: number
+  /** 权限码，统一为「资源:动作」，如 order:refund */
+  code: string
+  name: string
+  /** 按域分组，只影响展示 */
+  group: string
+  sort_order: number
+}
+
+/** 角色（对应 role.py）。权限和数据范围都挂在角色上 */
+export interface Role {
+  id: number
+  code: string
+  name: string
+  description: string
+  data_scope: string
+  data_scope_label: string
+  /** 预置角色：由后端 rbac.py 定义，界面上不能改 */
+  is_builtin: boolean
+  sort_order: number
+  permission_codes: string[]
+}
+
+/** 员工身上带的角色（staff.to_dict() 里的精简形态） */
+export interface StaffRoleBrief {
+  id: number
+  code: string
+  name: string
+}
+
 /** 员工账号（对应 staff.py；password_hash 属于泄露字段，前端不定义也不使用） */
 export interface Staff {
   id: number
@@ -21,6 +53,8 @@ export interface Staff {
   is_active: boolean
   /** 超级管理员：绕过权限码检查（日常授权走角色） */
   is_admin: boolean
+  /** 角色列表；权限和数据范围都由角色决定 */
+  roles: StaffRoleBrief[]
   created_at: string | null
 }
 

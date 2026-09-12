@@ -16,6 +16,8 @@ export interface StaffPayload {
   password?: string
   /** 归属门店；总部账号传 null */
   store_id?: number | null
+  /** 角色 id 列表；不传表示不改动（新建时传空数组 = 没有任何权限） */
+  role_ids?: number[]
   employment_type?: string
   is_shared?: boolean
   is_active?: boolean

@@ -1,4 +1,6 @@
-"""pytest 公共夹具：测试应用、客户端、测试员工账号"""
+"""pytest 公共夹具：测试应用、客户端、测试员工账号、权限种子"""
+import itertools
+
 import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -33,6 +35,49 @@ def app():
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def seed_roles(app):
+    """每个用例都先把权限目录和预置角色灌进库
+
+    自动执行：绝大多数用例都要用到角色（判权、数据范围），
+    单独写夹具容易漏。种子本身幂等，重复跑没有副作用。
+    """
+    from backend.app.rbac import seed_rbac
+    with app.app_context():
+        seed_rbac()
+
+
+@pytest.fixture
+def make_staff(app):
+    """按角色造员工的工厂：make_staff('laoban', role_code='store_manager', store_id=1)
+
+    返回的对象脱离 app_context 后只能读已加载的属性（id/username 等），
+    要用角色得在应用上下文里查。
+    """
+    _counter = itertools.count(1)
+
+    def _make(username, role_code, store_id=None, password='Passw0rd!', **extra):
+        from backend.app.models import Role, Staff
+        with app.app_context():
+            staff = Staff(
+                username=username,
+                real_name=extra.pop('real_name', username),
+                email=extra.pop('email', f'{username}@example.com'),
+                mobile=extra.pop('mobile', f'1390000{next(_counter):04d}'),
+                store_id=store_id,
+                **extra,
+            )
+            staff.set_password(password)
+            role = Role.query.filter_by(code=role_code).first()
+            assert role is not None, f'角色 {role_code} 不存在，检查 rbac.py'
+            staff.roles = [role]
+            db.session.add(staff)
+            db.session.commit()
+            db.session.refresh(staff)
+            return staff
+    return _make
 
 
 @pytest.fixture

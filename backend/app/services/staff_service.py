@@ -2,7 +2,7 @@ from flask_login import current_user
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
-from backend.app.models import Staff, Store
+from backend.app.models import Role, Staff, Store
 from backend.app.services.audit_service import AuditService
 
 RESOURCE = 'staff'
@@ -26,8 +26,13 @@ class StaffService:
         return Staff.query.filter_by(username=username).first()
 
     @staticmethod
-    def get_paginated_staff(page=1, per_page=10, search=None):
+    def get_paginated_staff(page=1, per_page=10, search=None, store_ids=None):
         query = Staff.query
+
+        # 数据范围：店长只看到本店员工。store_id 为 NULL 的总部账号
+        # 天然落在 in_() 之外，所以店长也看不到总部账号，符合设计文档。
+        if store_ids is not None:
+            query = query.filter(Staff.store_id.in_(store_ids))
 
         if search:
             query = query.filter(
@@ -52,6 +57,29 @@ class StaffService:
             raise NotFoundError(f'归属门店不存在（store_id={store_id}）')
 
     @staticmethod
+    def assert_can_manage(store_id):
+        """数据范围检查：本店范围的店长只能管本店员工
+
+        store_id 传 None 表示总部账号——本店范围的角色管不了，会走到 403。
+        权限码（staff:manage / staff:manage:all）管的是「能不能管员工」，
+        这里管的是「能管哪家店的员工」。
+        """
+        allowed = current_user.accessible_store_ids()
+        if allowed is not None and store_id not in allowed:
+            raise BusinessError('无权管理其他门店的员工', status_code=403)
+
+    @staticmethod
+    def _resolve_roles(role_ids):
+        """role_ids → Role 对象列表；有不存在的 id 直接报 404，不静默忽略"""
+        if not role_ids:
+            return []
+        roles = Role.query.filter(Role.id.in_(role_ids)).all()
+        missing = set(role_ids) - {role.id for role in roles}
+        if missing:
+            raise NotFoundError(f'角色不存在（role_id={sorted(missing)}）')
+        return roles
+
+    @staticmethod
     def _assert_unique(staff_id, field, value):
         """检查 username/email/mobile 是否与他人重复；staff_id 为 None 表示新建"""
         if value is None:
@@ -71,6 +99,8 @@ class StaffService:
                 raise BusinessError('密码不能少于6位')
 
             StaffService._assert_store_exists(data.get('store_id'))
+            StaffService.assert_can_manage(data.get('store_id'))
+            roles = StaffService._resolve_roles(data.get('role_ids'))
 
             staff = Staff(
                 username=data['username'],
@@ -84,6 +114,7 @@ class StaffService:
                 is_admin=data['is_admin'],
             )
             staff.set_password(password)
+            staff.roles = roles
 
             db.session.add(staff)
             db.session.commit()
@@ -118,6 +149,8 @@ class StaffService:
             if not staff:
                 raise NotFoundError('员工不存在')
 
+            StaffService.assert_can_manage(staff.store_id)
+
             # 先留一份改动前的快照，审计日志要记变动前后值
             old_value = staff.to_dict()
 
@@ -131,7 +164,12 @@ class StaffService:
 
             if 'store_id' in data and data['store_id'] != staff.store_id:
                 StaffService._assert_store_exists(data['store_id'])
+                # 调岗也要守住范围：本店范围的店长不能把人挪到别店，也不能挪成总部账号
+                StaffService.assert_can_manage(data['store_id'])
                 staff.store_id = data['store_id']
+
+            if 'role_ids' in data:
+                staff.roles = StaffService._resolve_roles(data['role_ids'])
 
             password = data.get('password') or ''
             if password:
@@ -179,6 +217,8 @@ class StaffService:
 
             if staff.id == current_user.id:
                 raise BusinessError('不能删除自己的账号')
+
+            StaffService.assert_can_manage(staff.store_id)
 
             old_value = staff.to_dict()
 

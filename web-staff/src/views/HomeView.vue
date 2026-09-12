@@ -8,7 +8,13 @@ const authStore = useAuthStore()
 const dashboard = ref<DashboardData | null>(null)
 const loading = ref(false)
 
-const roleText = computed(() => (dashboard.value?.is_admin ? '超级管理员' : '员工'))
+const roleText = computed(() => {
+  const staff = dashboard.value?.staff
+  if (!staff) return '—'
+  if (staff.is_admin) return '超级管理员'
+  if (!staff.roles.length) return '未分配角色'
+  return staff.roles.map((role) => role.name).join('、')
+})
 
 async function loadDashboard() {
   loading.value = true

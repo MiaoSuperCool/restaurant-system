@@ -17,7 +17,7 @@
 - 登录/登出（Flask-Login 会话认证 + CSRF 的 SPA 适配）
 - 员工账号管理（管理员 CRUD、启用/禁用、门店归属、用工类型）
 - 审计日志（操作自动记录，管理员可查）
-- 权限控制（后端 `admin_required` 兜底 + 前端路由守卫/菜单过滤）
+- 权限体系（角色 × 权限码 × 数据范围：后端 `@permission_required` 判权 + service 层过滤本店/全部，前端按权限渲染菜单和按钮）
 - 自动接口文档（flask-smorest：schema 即文档，Swagger UI 在 `/apidocs`）
 - 三栏布局 + 黑白灰极简风格（Element Plus 主题定制）
 
@@ -33,6 +33,7 @@
 │   ├── app/
 │   │   ├── api/              # 蓝图路由（auth/staff/stores/audit/main）
 │   │   ├── models/           # SQLAlchemy 模型（BaseModel 带公共时间戳）
+│   │   ├── rbac.py           # 权限码目录 + 预置角色（权限体系的唯一事实来源）
 │   │   ├── schemas/          # Marshmallow 输入校验
 │   │   ├── services/         # 业务逻辑 + 审计记录
 │   │   ├── utils/            # 统一响应、权限装饰器
@@ -63,11 +64,12 @@
    ```
 2. 配置环境：`cp backend/.env.example backend/.env`，改 `DATABASE_URL` 的库名/账号密码
 3. 建库：在项目根目录 `python create_db.py`（自动创建 .env 里指定的数据库）
-4. 迁移建表 + 创建管理员：
+4. 迁移建表 + 灌权限 + 创建管理员：
    ```bash
    cd backend
    flask db upgrade                    # 应用迁移建表
-   python manage.py create-admin       # 按提示创建管理员
+   flask seed-rbac                     # 灌权限码和预置角色（新建库必须跑，否则所有角色都没权限）
+   python manage.py create-admin       # 按提示创建超级管理员
    ```
 5. 启动前后端：
    ```bash
@@ -85,6 +87,31 @@
 - Try it out 写接口（POST/PUT/DELETE）会被 CSRF 拦：需在页面 Authorize 里填入 `X-CSRFToken`（值 = 浏览器 cookie 中 `csrf_token`）
 - 生产环境不想暴露文档：`.env` 里设 `ENABLE_API_DOCS=false`
 
+## 权限体系
+
+两层，缺一不可——设计文档里反复强调「前端只负责显不显示，后端负责能不能干 + 能碰哪些数据」：
+
+**第一层：权限码** —— 「能不能干这件事」
+
+- 权限码来自 `backend/app/models/permission.py`，命名统一为 `资源:动作`（如 `dish:price:edit`）
+- 全部合法取值登记在 `backend/app/rbac.py` 的 `PERMISSIONS`，按域分组
+- 接口上挂 `@permission_required('store:manage')`，多个码表示任一即可
+- 超级管理员（`staff.is_admin`）是旁路，绕过所有检查——只留给初始管理员账号，日常授权走角色
+
+**第二层：数据范围** —— 「能碰哪些数据」
+
+- 挂在**角色**上（`Role.data_scope`）：`store` = 本店，`all` = 全部
+- 同一个 `dish:price:edit`，店长只能改本店的，运营主管能改全公司——区别在范围不在权限
+- service 层用 `current_user.accessible_store_ids()` 过滤查询；返回 `None` 表示不限
+
+**角色**由 `rbac.py` 的 `ROLES` 定义（服务员/后厨/收银员/值班经理/店长/运营主管/财务/老板），
+`flask seed-rbac` 幂等落地——改了权限码或角色矩阵跑一次就同步，被改乱了也能一键还原。
+
+前端拿到的是登录接口下发的 `permissions` 数组和 `data_scope`，用来渲染菜单和按钮。
+页面刷新时 `MainLayout` 会调一次 `/index` 同步最新权限（改了角色不用重新登录）。
+
+> 前端的权限判断**纯属体验层**。后端每个接口都会重新判权，改了 localStorage 也拿不到数据。
+
 ## Docker 一键部署
 
 ```bash
@@ -97,7 +124,10 @@ docker compose up -d --build
 ## 添加新业务模块（照「门店」「员工」示例）
 
 后端：`models/xxx.py` → `schemas/xxx_schema.py`（schema 同时管请求校验和接口文档）→ `services/xxx_service.py` → `api/xxx.py`（flask-smorest Blueprint，请求参数用 `@bp.arguments(Schema, location='json')` 声明）→ 在 `backend/app/__init__.py` 的 `register_blueprints` 里 `api.register_blueprint(xxx.bp)` → `flask db migrate -m "xxx"` 生成迁移
-前端：`api/xxx.ts` → `views/XxxView.vue` → `components/XxxFormDialog.vue` → router 加子路由（管理员页面加 `meta: { requiresAdmin: true }`）+ Sidebar 菜单加一项
+
+权限：新模块需要在 `backend/app/rbac.py` 的 `PERMISSIONS` 里登记权限码、决定哪些角色拥有它，然后 `flask seed-rbac` 同步；接口上挂 `@permission_required('xxx:yyy')`；**能碰哪些数据**（本店/全部）另算，由 service 层按 `current_user.accessible_store_ids()` 过滤
+
+前端：`api/xxx.ts` → `views/XxxView.vue` → `components/XxxFormDialog.vue` → router 加子路由（`meta: { permissions: ['xxx:yyy'] }`）+ Sidebar 的 `ALL_MENUS` 加一项，两处的权限码要和后端对得上
 首页统计：改 `backend/app/api/main.py` 的 `index()` 和 `web-staff/src/api/main.ts`
 
 ## 测试与代码规范
