@@ -103,3 +103,45 @@ def test_requires_menu_permission(client, normal_staff, make_staff, login):
     login('shouyin', 'Passw0rd!')
     assert client.get('/api/categories').status_code == 200
     assert _create_category(client).status_code == 403
+
+
+def test_store_scope_role_cannot_touch_categories(client, admin_staff, make_staff, login):
+    """店长有 menu:update，但那是给「本店菜单」用的，不能顺着它改全公司的分类
+
+    分类接口复用的就是 menu:* 这组码——`menu:create` / `menu:delete` 只发给了
+    全公司范围的角色，所以建和删本来就拦得住；但店长**有** `menu:update`
+    （他每天要改本店菜单），光靠权限码挡不住，必须在服务层再查一次数据范围。
+    """
+    login('admin', 'Admin123!')
+    store = _create_store(client)
+    category = _create_category(client).get_json()['data']
+    client.post('/api/auth/logout')
+
+    make_staff('dianzhang', 'store_manager', store_id=store['id'])
+    login('dianzhang', 'Passw0rd!')
+
+    # 看得了（有 menu:view）
+    assert client.get('/api/categories').status_code == 200
+    # 建不了（没有 menu:create，装饰器就拦下了）
+    assert _create_category(client, name='店长想建').status_code == 403
+
+    # 改不了 —— 这条是关键，他的权限码是够的
+    resp = client.put(f'/api/categories/{category["id"]}', json={'name': '店长想改'})
+    assert resp.status_code == 403
+    assert '全公司' in resp.get_json()['message']
+
+    # 改适用范围也不行（把自家店塞进「只在大店卖」的分类里）
+    resp = client.put(f'/api/categories/{category["id"]}', json={'store_ids': [store['id']]})
+    assert resp.status_code == 403
+
+    # 关掉整个分类更不行
+    resp = client.put(f'/api/categories/{category["id"]}', json={'is_visible': False})
+    assert resp.status_code == 403
+
+    # 三次都没改进去
+    client.post('/api/auth/logout')
+    login('admin', 'Admin123!')
+    after = client.get('/api/categories').get_json()['data']['categories'][0]
+    assert after['name'] == '主食'
+    assert after['is_visible'] is True
+    assert after['is_all_stores'] is True

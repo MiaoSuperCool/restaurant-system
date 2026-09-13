@@ -357,6 +357,43 @@ def test_category_store_scope_filters_public_menu(client, admin_staff, login):
     assert dish['name'] not in names_b
 
 
+def test_hidden_category_not_in_menu(client, admin_staff, login):
+    """is_visible=False 的分类整个不上菜单——内部和顾客端都不上
+
+    这个字段之前是「存了、显示了、没生效」：运营在后台把分类关掉、
+    界面上打回「隐藏」，顾客在别的店照样看得到那些菜。和「适用门店」
+    是同一类毛病。
+    """
+    login('admin', 'Admin123!')
+    store = _create_store(client)
+    visible = _create_category(client, '面食')
+    hidden = _create_category(client, '季节限定')
+    _create_dish(client, visible['id'], name='牛肉面')
+    _create_dish(client, hidden['id'], name='月饼', base_price='8.00')
+
+    def dish_names(path):
+        return [row['name'] for row in client.get(path).get_json()['data']['dishes']]
+
+    internal = f'/api/stores/{store["id"]}/menu'
+    public = f'/api/public/stores/{store["id"]}/menu'
+
+    assert '月饼' in dish_names(internal)
+    assert '月饼' in dish_names(public)
+
+    # 关掉「季节限定」
+    assert client.put(f'/api/categories/{hidden["id"]}',
+                      json={'is_visible': False}).status_code == 200
+
+    assert '月饼' not in dish_names(internal)
+    assert '月饼' not in dish_names(public)
+    # 别的分类不受影响
+    assert '牛肉面' in dish_names(internal)
+
+    # 再打开就回来了
+    client.put(f'/api/categories/{hidden["id"]}', json={'is_visible': True})
+    assert '月饼' in dish_names(internal)
+
+
 def test_removing_store_scope_makes_category_universal(client, admin_staff, login):
     """把适用范围改回空数组，分类就恢复成全公司通用"""
     login('admin', 'Admin123!')

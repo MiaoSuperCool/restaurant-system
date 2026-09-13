@@ -3,7 +3,7 @@ from sqlalchemy import func
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
-from backend.app.models import Category, Store
+from backend.app.models import Category, Role, Store
 from backend.app.services.audit_service import AuditService
 from backend.app.utils.references import describe_references, find_referencing_rows
 
@@ -50,6 +50,23 @@ class CategoryService:
         return stores
 
     @staticmethod
+    def _assert_company_scope(action):
+        """分类是全公司共用的数据，改它需要「全部」范围的角色
+
+        店长手里有 menu:update，但那个码是给「本店菜单」用的——他改的是
+        store_dish 里的价格和上下架。分类的名字、适用门店、显示与否全是
+        全公司的事，不能顺着同一个权限码一起改掉。
+
+        （分类接口复用的就是 menu:* 这组码，没有自己的码，所以这道检查
+        必须写在服务层——和 DishService._assert_company_scope 一个道理。）
+        """
+        if current_user.data_scope != Role.SCOPE_ALL:
+            raise BusinessError(
+                f'分类是全公司共用的数据，本店范围的账号不能{action}',
+                status_code=403,
+            )
+
+    @staticmethod
     def _assert_name_unique(category_id, name):
         existing = Category.query.filter_by(name=name).first()
         if existing and existing.id != category_id:
@@ -58,6 +75,7 @@ class CategoryService:
     @staticmethod
     def create_category(data):
         try:
+            CategoryService._assert_company_scope('新增分类')
             CategoryService._assert_name_unique(None, data['name'])
             stores = CategoryService._resolve_stores(data.get('store_ids'))
 
@@ -102,6 +120,8 @@ class CategoryService:
             if not category:
                 raise NotFoundError('分类不存在')
 
+            CategoryService._assert_company_scope('修改分类')
+
             old_value = category.to_dict()
 
             if 'name' in data and data['name'] != category.name:
@@ -145,6 +165,8 @@ class CategoryService:
             category = CategoryService.get_category_by_id(category_id)
             if not category:
                 raise NotFoundError('分类不存在')
+
+            CategoryService._assert_company_scope('删除分类')
 
             # 分类下面还有菜品就不能删，否则那些菜会变成没有分类的孤儿。
             # 先把菜品挪走或删掉，再删分类。
