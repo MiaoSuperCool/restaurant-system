@@ -42,29 +42,41 @@ function getCsrfFromCookie(): string | null {
 let csrfPromise: Promise<string | null> | null = null
 
 /**
- * 确保拿到 csrf_token。
- * 后端在每次响应的 after_request 里设置 csrf_token cookie，
- * 但如果"第一个请求"就是登录 POST，cookie 还不存在，会被 CSRF 拦截。
- * 所以 cookie 缺失时，先向后端发一个 GET 预热，把 cookie 领回来。
+ * 向后端要一个新 token（不管 cookie 里有没有）。
+ *
+ * 用原生 axios 发预热请求，绕开本文件的拦截器，避免触发 401 跳转逻辑。
+ * 未登录时后端返回 401 是正常的——预热只为拿 cookie，不看响应体。
  */
-function ensureCsrfToken(): Promise<string | null> {
-  const token = getCsrfFromCookie()
-  if (token) return Promise.resolve(token)
-
+function refreshCsrfToken(): Promise<string | null> {
   if (!csrfPromise) {
-    // 用原生 axios 发预热请求，绕开本文件的拦截器，避免触发 401 跳转逻辑
     csrfPromise = axios
       .get('/index', {
         withCredentials: true,
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
       })
-      .catch(() => undefined) // 未登录返回 401 是正常的，只要 cookie 拿到就行
+      .catch(() => undefined)
       .then(() => getCsrfFromCookie())
       .finally(() => {
         csrfPromise = null
       })
   }
   return csrfPromise
+}
+
+/**
+ * 确保拿到 csrf_token。
+ * 后端在每次响应的 after_request 里设置 csrf_token cookie，
+ * 但如果"第一个请求"就是登录 POST，cookie 还不存在，会被 CSRF 拦截。
+ * 所以 cookie 缺失时，先向后端发一个 GET 预热，把 cookie 领回来。
+ *
+ * 注意这里**只看 cookie 在不在，不看它还有没有效**——失效的情况由响应拦截器
+ * 兜底（收到 400 + reason=csrf 就换新 token 重试一次）。只在这里判断的话，
+ * 一个失效的 cookie 会让所有写请求永远 400，刷新页面也没用。
+ */
+function ensureCsrfToken(): Promise<string | null> {
+  const token = getCsrfFromCookie()
+  if (token) return Promise.resolve(token)
+  return refreshCsrfToken()
 }
 
 /* ================= 请求拦截器 ================= */
@@ -94,10 +106,30 @@ service.interceptors.response.use(
   // 2xx 直接放行，由下面的 request() 拆信封
   (response) => response,
   // 非 2xx 统一在这里处理
-  (error: AxiosError<ApiResponse>) => {
+  async (error: AxiosError<ApiResponse>) => {
     const status = error.response?.status
     const fullUrl = (error.config?.baseURL || '') + (error.config?.url || '')
     const serverMessage = error.response?.data?.message
+
+    // CSRF token 失效：换一个新的重试一次，用户不用手动清 cookie
+    //
+    // 什么时候会失效：cookie 里那个 token 和服务端 session 对不上（登录过期、
+    // 换过 SECRET_KEY、清过一半 cookie）。后端在响应 data 里带了 reason=csrf
+    // 来标记这种情况，见 app/__init__.py 的 handle_csrf_error。
+    //
+    // 只重试一次（__csrfRetried），否则会死循环；重试后还失败就说明 session
+    // 真的没了，那时会走到下面的分支把后端的提示弹出来。
+    const config = error.config as (typeof error.config & { __csrfRetried?: boolean })
+    if (error.response?.data?.data &&
+        (error.response.data.data as { reason?: string }).reason === 'csrf' &&
+        config && !config.__csrfRetried) {
+      config.__csrfRetried = true
+      const token = await refreshCsrfToken()
+      if (token) {
+        // 不用手动改 header：请求拦截器会用刚领到的新 token 覆盖旧的
+        return service.request(config)
+      }
+    }
 
     if (status === 401 && fullUrl !== '/api/auth') {
       // 登录过期/未登录 → 回登录页
