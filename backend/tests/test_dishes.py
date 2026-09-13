@@ -222,6 +222,43 @@ def test_field_level_permissions(app, client, admin_staff, make_staff, login):
     assert client.put(f'/api/dishes/{dish["id"]}', json={'name': '红烧牛肉面'}).status_code == 200
 
 
+def test_field_permission_dict_is_single_source(app, client, admin_staff, make_staff, login,
+                                                monkeypatch):
+    """字段名单只有一处：往 FIELD_PERMISSIONS 加一条，那个字段立刻受权限管
+
+    锁的是「别再抄一份字段名」这条约定。要是哪天有人把更新循环改回写死的
+    ('base_price', 'status')，或者把权限码取法改回 .get() 兜底，这里就会挂。
+    """
+    from backend.app.extensions import db
+    from backend.app.models import Permission, Role
+    from backend.app.services.dish_service import DishService
+
+    login('admin', 'Admin123!')
+    category = _create_category(client)
+    dish = _create_dish(client, category['id']).get_json()['data']
+    client.post('/api/auth/logout')
+
+    # 临时把「菜名」也划进受管字段——只加这两条，更新逻辑一行都不用动
+    monkeypatch.setitem(DishService.FIELD_PERMISSIONS, 'name', 'dish:online')
+    monkeypatch.setitem(DishService.FIELD_LABELS, 'name', '菜名')
+
+    # 造一个「能改菜品、但没有 dish:online」的角色
+    with app.app_context():
+        role = Role(code='renamer', name='改名专员', data_scope='all', description='')
+        role.permissions = Permission.query.filter(
+            Permission.code.in_(['menu:view', 'menu:update'])
+        ).all()
+        db.session.add(role)
+        db.session.commit()
+
+    make_staff('gaiming', 'renamer')
+    login('gaiming', 'Passw0rd!')
+
+    resp = client.put(f'/api/dishes/{dish["id"]}', json={'name': '新名字'})
+    assert resp.status_code == 403
+    assert '菜名' in resp.get_json()['message']
+
+
 def test_store_scope_cannot_touch_company_dishes(client, admin_staff, make_staff, login):
     """菜品基础是全公司数据，本店范围的店长改不了——他改的是「门店菜品」"""
     login('admin', 'Admin123!')

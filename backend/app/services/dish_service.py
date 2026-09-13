@@ -14,7 +14,7 @@ RESOURCE = 'dish'
 class DishService:
     # 改这几个字段不只是「改菜品」，各自还有专门的权限码。
     # 设计文档把改价、上下架单独列出来，就是因为这两件事风险最高——
-    # 门店里能改菜名的人，不一定该能改价格。
+    # 门店里能改菜名的人，不一定该能改价格。这里也把这两个权限列出来
     FIELD_PERMISSIONS = {
         'base_price': 'dish:price:edit',
         'status': 'dish:online',
@@ -64,11 +64,17 @@ class DishService:
 
     @staticmethod
     def _assert_field_permission(field, new_value, old_value):
-        """改价、改上下架各有专门的权限码，不是有 menu:update 就能改"""
+        """改价、改上下架各有专门的权限码，不是有 menu:update 就能改
+
+        field 一定来自 FIELD_PERMISSIONS（调用方就是遍历那个字典），所以这里
+        用下标取、不用 .get() 兜底。取不到说明有人把字段名单写岔了，那种情况
+        必须当场炸掉：要是兜成 None 再跳过检查，就成了「不报错、悄悄放行」，
+        对权限检查来说那是最坏的结果。
+        """
         if new_value == old_value:
             return
-        code = DishService.FIELD_PERMISSIONS.get(field)
-        if code and not current_user.has_permission(code):
+        code = DishService.FIELD_PERMISSIONS[field]
+        if not current_user.has_permission(code):
             raise BusinessError(
                 f'没有「{permission_name(code)}」权限，'
                 f'不能改{DishService.FIELD_LABELS[field]}',
@@ -88,7 +94,7 @@ class DishService:
     def _sync_options(dish, groups_data):
         """按 id 对齐地更新规格结构：改的原地改、新的新增、没出现的删掉
 
-        **不能「全删了重建」**：订单明细会引用选项 id，重建会让历史订单指到
+        不能「全删了重建」：订单明细会引用选项 id，重建会让历史订单指到
         不存在的选项上，那样「加蛋卖了多少份」这类统计就断了。
         """
         original_groups = list(dish.option_groups)
@@ -205,11 +211,17 @@ class DishService:
             if 'category_id' in data and data['category_id'] != dish.category_id:
                 dish.category = DishService._resolve_category(data['category_id'])
 
+            # 修改不需要特定权限的字段。`not in FIELD_PERMISSIONS` 是护栏：
+            # 哪天把「菜名」也划进受管字段，它必须从这一轮让开——否则这里先把
+            # 值改掉了，下一轮比对时新旧值相同，权限检查会被整个绕过去还不报错。
             for field in ('name', 'image', 'description', 'sort_order'):
-                if field in data:
+                if field in data and field not in DishService.FIELD_PERMISSIONS:
                     setattr(dish, field, data[field])
 
-            for field in ('base_price', 'status'):
+            # 遍历 FIELD_PERMISSIONS 本身，而不是在这儿再抄一份字段名——
+            # 名单只有一处，以后加字段（比如「菜名也要单独授权」）只改那个字典，
+            # 检查和新值写入都在这一个循环里完成，不会和上面那轮抢同一个字段
+            for field in DishService.FIELD_PERMISSIONS:
                 if field in data:
                     DishService._assert_field_permission(field, data[field], getattr(dish, field))
                     setattr(dish, field, data[field])

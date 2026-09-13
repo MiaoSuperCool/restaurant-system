@@ -21,6 +21,13 @@ class StoreDishService:
         'price': '价格',
         'is_available': '上下架状态',
     }
+    # 这家店还没建覆盖记录时，各字段的「当前值」是什么——和 StoreDish 列上的
+    # 默认语义一致：没有行 = 没覆盖价（用基础价）、可售。
+    # 提出来是因为下面判「值有没有变」要用，而默认值每个字段各不相同。
+    FIELD_DEFAULTS = {
+        'price': None,
+        'is_available': True,
+    }
 
     # ---------- 查询 ----------
 
@@ -144,15 +151,20 @@ class StoreDishService:
 
     @staticmethod
     def _assert_field_permissions(data, override):
-        """价格的旧值要看覆盖价而不是菜品基础价——改回基础价也算改价"""
-        for field in ('price', 'is_available'):
+        """改价、上下架要额外的权限码——和菜品基础那边同一套规则
+
+        和 DishService._assert_field_permission 是一个思路：field 名单只从
+        FIELD_PERMISSIONS 取，不另抄一份；权限码用下标取，不兜底。
+
+        价格的旧值要看**覆盖价**而不是菜品基础价——本店本来就没覆盖价时，
+        传进来的 None 不算「改动」，这跟「传个和基础价一样的数字」是两回事。
+        """
+        for field in StoreDishService.FIELD_PERMISSIONS:
             if field not in data:
                 continue
-            if field == 'price':
-                old_value = override.price if override else None
-            else:
-                old_value = override.is_available if override else True
 
+            old_value = (getattr(override, field) if override
+                         else StoreDishService.FIELD_DEFAULTS[field])
             if data[field] == old_value:
                 continue
 

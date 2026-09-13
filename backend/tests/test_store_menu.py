@@ -265,6 +265,44 @@ def test_price_change_needs_dish_price_edit(app, client, admin_staff, make_staff
     assert client.put(url, json={'price': '18.00'}).status_code == 200
 
 
+def test_store_dish_field_permission_dict_is_single_source(app, client, admin_staff, make_staff,
+                                                           login, monkeypatch):
+    """门店菜单这边同一套：往 FIELD_PERMISSIONS 加字段，检查自动跟上
+
+    和菜品基础那边是一对。门店这边多一份 FIELD_DEFAULTS——这家店还没建覆盖
+    记录时，各字段的「当前值」不一样（价格默认「没覆盖」，上架默认 true）。
+    """
+    from backend.app.extensions import db
+    from backend.app.models import Permission, Role
+    from backend.app.services.store_dish_service import StoreDishService
+
+    login('admin', 'Admin123!')
+    store, dish = _setup(client)
+    url = f'/api/stores/{store["id"]}/dishes/{dish["id"]}'
+    client.post('/api/auth/logout')
+
+    # 临时把「每日限量」也划进受管字段
+    monkeypatch.setitem(StoreDishService.FIELD_PERMISSIONS, 'daily_limit', 'dish:price:edit')
+    monkeypatch.setitem(StoreDishService.FIELD_LABELS, 'daily_limit', '每日限量')
+    monkeypatch.setitem(StoreDishService.FIELD_DEFAULTS, 'daily_limit', None)
+
+    # 造一个「能管菜单、没有 dish:price:edit」的角色
+    with app.app_context():
+        role = Role(code='menu_only_b', name='菜单维护B', data_scope='all', description='')
+        role.permissions = Permission.query.filter(
+            Permission.code.in_(['menu:view', 'menu:update'])
+        ).all()
+        db.session.add(role)
+        db.session.commit()
+
+    make_staff('weihu_b', 'menu_only_b')
+    login('weihu_b', 'Passw0rd!')
+
+    resp = client.put(url, json={'daily_limit': 20})
+    assert resp.status_code == 403
+    assert '每日限量' in resp.get_json()['message']
+
+
 def test_category_store_scope_filters_menu(client, admin_staff, login):
     """分类的「适用门店」要真的过滤菜单，不能只是存着好看
 
