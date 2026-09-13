@@ -50,3 +50,41 @@ def test_csrf_wrong_token_rejected(csrf_app, client, admin_staff):
                        json={'username': 'admin', 'password': 'Admin123!'},
                        headers={'X-CSRFToken': 'wrong-token'})
     assert resp.status_code == 400
+
+
+def test_csrf_failure_carries_message(csrf_app, client, admin_staff):
+    """CSRF 失败必须带可读的 message，不能是那个没头没脑的裸 400
+
+    这曾经是个真问题：CSRFError 是 BadRequest(400) 的子类，没人接就落到
+    flask-smorest 的默认处理，吐出 {"code":400,"status":"Bad Request"}——
+    前端拦截器只认 {success, message}，用户就只看到「请求失败（400）」，
+    完全不知道发生了什么。
+
+    data.reason 是给前端拦截器用的机器可读标记：它靠这个认出「是 token 失效、
+    不是业务失败」，自动换一个新 token 重试一次，用户不用手动清 cookie。
+    """
+    client.get('/index')
+    resp = client.post('/api/auth',
+                       json={'username': 'admin', 'password': 'Admin123!'},
+                       headers={'X-CSRFToken': 'wrong-token'})
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body['success'] is False
+    assert body['message'], '必须有可读的提示，不能是空字符串'
+    assert body['data'] == {'reason': 'csrf'}, '前端靠这个标记决定要不要换 token 重试'
+
+
+def test_bad_request_also_uses_envelope(csrf_app, client, admin_staff):
+    """兜底：其他 400 也要走统一信封，别漏出裸格式"""
+    client.get('/index')
+    with client.session_transaction() as sess:
+        token = sess.get('csrf_token_signed')
+
+    resp = client.post('/api/auth', data='{不是合法 json',
+                       content_type='application/json',
+                       headers={'X-CSRFToken': token})
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body is not None and 'success' in body, f'应该是统一信封，实际拿到: {body}'

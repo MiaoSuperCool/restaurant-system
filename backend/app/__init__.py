@@ -7,7 +7,7 @@ import os
 from logging.handlers import RotatingFileHandler
 
 from flask import Flask, jsonify, send_from_directory, session
-from flask_wtf.csrf import generate_csrf
+from flask_wtf.csrf import CSRFError, generate_csrf
 
 from backend.app.config import DevelopmentConfig, ProductionConfig, TestingConfig
 from backend.app.errors import BusinessError
@@ -222,6 +222,37 @@ def register_error_handlers(app):
     @app.errorhandler(BusinessError)
     def handle_business_error(e):
         return jsonify(api_response(success=False, message=e.message)), e.status_code
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        """CSRF 校验失败 —— 必须接住，否则前端拿不到任何原因
+
+        CSRFError 是 BadRequest(400) 的子类。没人接的话会落到 flask-smorest 的
+        默认处理，吐出一个没有 message 的裸格式 {"code":400,"status":"Bad Request"}——
+        而前端拦截器只认 {success, message}，用户就只看到「请求失败（400）」，
+        完全不知道发生了什么。
+
+        最常见的触发：浏览器手里的 csrf_token cookie 还在，但服务端 session 已经
+        对不上（换过 SECRET_KEY、session 过期、只清了一半 cookie）。Flask-WTF 的
+        校验跑在 @login_required **之前**，所以拿到的是 400 而不是 401——
+        提示要写清楚，不然用户会以为是权限问题。
+
+        data 里带个 reason，前端拦截器靠它认出「是 token 过期不是业务失败」，
+        自动换一个新 token 重试一次，不用用户清 cookie。
+        """
+        return jsonify(api_response(
+            success=False,
+            message='登录状态已失效，请刷新页面重试',
+            data={'reason': 'csrf'},
+        )), 400
+
+    @app.errorhandler(400)
+    def handle_bad_request(e):
+        """兜底：其他 400（比如请求体不是合法 JSON）也走统一信封
+
+        同样是为了别让前端拿到那个没有 message 的裸格式。
+        """
+        return jsonify(api_response(success=False, message='请求格式不正确')), 400
 
     def flatten_errors(errors, prefix=''):
         """把嵌套的字段错误 {json: {username: [...]}} 压平成可读文本，方便直接展示给用户"""
