@@ -357,6 +357,38 @@ def test_category_store_scope_filters_public_menu(client, admin_staff, login):
     assert dish['name'] not in names_b
 
 
+def test_menu_order_follows_category_order(client, admin_staff, login):
+    """菜单先按分类顺序排，再按菜在分类里的顺序排
+
+    顾客端的分类栏是从这份列表里「现推」的——分类首次出现的位置就是它在
+    分类栏里的位置。所以分类顺序不在这里定死的话，运营在后台拖的
+    `Category.sort_order` 对顾客端毫无影响，顺序变成「哪个分类里有一道
+    最靠前的菜」，和运营看到的不一样。
+    """
+    login('admin', 'Admin123!')
+    store = _create_store(client)
+
+    # 先建「面食」，再建「饮品」——分类的 sort_order 面食更小
+    noodles = _create_category(client, '面食')
+    drinks = _create_category(client, '饮品')
+
+    # 但菜是倒着建的：可乐的 Dish.sort_order 更小
+    _create_dish(client, drinks['id'], name='可乐', base_price='5.00')
+    _create_dish(client, noodles['id'], name='牛肉面')
+
+    def dish_names():
+        rows = client.get(f'/api/stores/{store["id"]}/menu').get_json()['data']['dishes']
+        return [row['name'] for row in rows]
+
+    # 分类顺序说了算：面食在前，哪怕它的菜建得更晚
+    assert dish_names() == ['牛肉面', '可乐']
+
+    # 把「饮品」调到最前，菜单跟着翻过来
+    assert client.put(f'/api/categories/{drinks["id"]}',
+                      json={'sort_order': 0}).status_code == 200
+    assert dish_names() == ['可乐', '牛肉面']
+
+
 def test_hidden_category_not_in_menu(client, admin_staff, login):
     """is_visible=False 的分类整个不上菜单——内部和顾客端都不上
 

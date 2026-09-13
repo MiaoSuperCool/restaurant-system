@@ -108,12 +108,18 @@ class StoreDishService:
         # 下面要读每道菜的分类和规格组，不预加载的话是 N+1 查询
         # （50 道菜 = 100 次额外查询）。点单界面每次都要拉整份菜单，
         # 这里省下来的很实在。
+        #
+        # 排序先分类后菜品：顾客端的分类栏是从这份列表里「现推」的
+        # （分类首次出现的位置就是它在分类栏里的位置，见 mp-customer 的
+        # menu.vue），所以分类顺序必须在这里定死。只按 Dish.sort_order 排的话，
+        # 运营在后台拖的 Category.sort_order 对顾客端毫无影响——分类栏的顺序
+        # 会变成「哪个分类里有一道最靠前的菜」，跟运营看到的对不上。
         dishes = (query
                   .options(
                       joinedload(Dish.category),
                       selectinload(Dish.option_groups).selectinload(DishOptionGroup.options),
                   )
-                  .order_by(Dish.sort_order, Dish.id)
+                  .order_by(Category.sort_order, Dish.sort_order, Dish.id)
                   .all())
 
         # 一次把这家店的覆盖全查出来，避免每道菜查一次（N+1）
