@@ -123,7 +123,7 @@ def register_blueprints(app):
         refunds,
         roles,
         staff,
-        store_menu,
+        store_dish,
         stores,
     )
 
@@ -168,7 +168,7 @@ def register_blueprints(app):
     api.register_blueprint(roles.bp)  # /api/roles
     api.register_blueprint(categories.bp)  # /api/categories
     api.register_blueprint(dishes.bp)  # /api/dishes
-    api.register_blueprint(store_menu.bp)  # /api/stores/<id>/menu
+    api.register_blueprint(store_dish.bp)  # /api/stores/<id>/menu、/api/stores/<id>/dishes/<id>
     api.register_blueprint(orders.bp)  # /api/orders
     api.register_blueprint(refunds.bp)  # /api/refunds
     api.register_blueprint(public.bp)  # /api/public/*（顾客端，不鉴权）

@@ -1,4 +1,17 @@
-"""门店菜单：某家店卖哪些菜、卖多少钱、一天限几份
+"""门店菜品：某家店卖哪些菜、卖多少钱、一天限几份
+
+**文件名跟模型走，URL 跟业务走**——这两件事不是一回事：
+
+    模型 / 服务 / schema   StoreDish / StoreDishService / store_dish_schema
+    URL                    /api/stores/<id>/menu          ← 使用者理解的说法
+                           /api/stores/<id>/dishes/<id>   ← 单个覆盖配置
+
+取菜单那个接口返回的是「菜品基础 + 本店覆盖」合并后的结果，既不是 dish 的行
+也不是 store_dish 的行，所以 URL 叫 menu 更贴切；但这个文件里同时还有
+PUT / DELETE .../dishes/<id> 那种纯粹的覆盖配置操作。
+
+文件名按 model 起（store_dish），这样从 StoreDish 一路找过来不会在最后一环断掉。
+（前端叫 StoreMenuView / storeMenu.ts 是对的——那是页面名，页面就该跟用户看到的走。）
 
 路径挂在门店下面（/api/stores/<id>/menu），因为它就是门店的子资源。
 和 api/stores.py 用同一个 url_prefix 是可以的——Flask 只要求端点名唯一。
@@ -12,7 +25,7 @@ from backend.app.services import StoreDishService
 from backend.app.utils.api_response import api_response
 from backend.app.utils.decorators import permission_required
 
-bp = Blueprint('store_menu', __name__, url_prefix='/api/stores')
+bp = Blueprint('store_dish', __name__, url_prefix='/api/stores')
 
 # 数据范围在这里特别要紧：店长只能看和改自己店的菜单。
 # 权限码（menu:view / menu:update）管「能不能碰菜单」，
