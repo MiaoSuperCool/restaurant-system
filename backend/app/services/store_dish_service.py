@@ -78,11 +78,17 @@ class StoreDishService:
             )
         return [row for row in StoreDishService._query_menu(store_id)
                 if row['is_available']]
+        # 顾客看不到下架的菜品但是店长可以看到，它们共用一套_query_menu逻辑，所以筛选是否下架
+        # 这个步骤应该单独放到顾客端菜单这里
 
     @staticmethod
     def _query_menu(store_id, category_id=None, search=None):
-        """按门店查菜单并合并本店覆盖——内部和顾客端共用的查询"""
+        """按门店查菜单并合并本店覆盖——内部和顾客端共用的查询
+        它的作用是从菜品表出发，砍掉不该出现的，按分类排好，再把这家店的
+        覆盖值贴上去"""
         query = Dish.query.filter(Dish.status == Dish.STATUS_ACTIVE)
+        # 第一步从菜品表出发，砍掉停售的，因为停售的不仅顾客不能看到，一家店的老板在点单页或门店菜单页也不应该看到
+        # 但是在菜品页是可以看到的
 
         # 分类一级的两个开关都在这里生效，缺一个都会出现「界面上关了、
         # 菜单里还在卖」：
@@ -93,10 +99,12 @@ class StoreDishService:
         # 注意这对**内部和顾客端同时生效**——不是只管顾客那边。
         # 店长的菜单里也不该出现自家不卖的分类。
         query = query.join(Dish.category).filter(
+            # 连上分类表以便下面使用分类字段过滤
             Category.is_visible.is_(True),
             db.or_(
                 ~Category.stores.any(),
                 Category.stores.any(Store.id == store_id),
+                # 这里筛选的是要么这个分类没有绑定任何店铺（对所有店铺可见，~是取反的意思），要么它明确绑定了当前这个店铺
             ),
         )
 
@@ -154,6 +162,8 @@ class StoreDishService:
 
     @staticmethod
     def get_override(store_id, dish_id):
+        # 查「这家店对这道菜有没有做过特殊设置」——有就返回那条StoreDish，没有返回 None
+        # upsert_override用它决定是新建还是原地改，delete_override用它决定有没有东西可删
         return StoreDish.query.filter_by(store_id=store_id, dish_id=dish_id).first()
 
     # ---------- 改 ----------
@@ -165,6 +175,8 @@ class StoreDishService:
         和 DishService._assert_field_permission 是一个思路：field 名单只从
         FIELD_PERMISSIONS 取，不另抄一份；权限码用下标取，不兜底。
 
+        这个函数的作用是：检查「这次请求真正改动的字段，当前用户有没有权限改」，没有就抛 403
+        先遍历 FIELD_PERMISSIONS 的 key，请求里没有这个字段则跳过，如果有，和旧值比较，如果和旧值一样也跳过
         价格的旧值要看**覆盖价**而不是菜品基础价——本店本来就没覆盖价时，
         传进来的 None 不算「改动」，这跟「传个和基础价一样的数字」是两回事。
         """
@@ -186,10 +198,22 @@ class StoreDishService:
                 )
 
     @staticmethod
+    def _is_blank(override):
+        """三个字段全是默认值——这行等于没设置过"""
+        return (override.price is None
+                and override.is_available
+                and override.daily_limit is None)
+
+    @staticmethod
     def upsert_override(store_id, dish_id, data):
         """设置某门店对某道菜的覆盖（没有记录就建一条）
 
-        传 price=null 表示取消本店覆盖、改回菜品基础价。
+        传 price=null 表示取消本店价格覆盖、改回菜品基础价；
+        **价格填成和基础价一样也算**——「取消覆盖」和「覆盖成一个恰好相同的值」
+        在界面上看不出区别，留着只会让人纳闷「我明明改回去了，怎么还划着横线」。
+
+        上下架切回可售、限量清空同理。三样都回到默认值的话，这一行会被删掉——
+        它已经不代表任何特殊设置了。
         """
         try:
             StoreDishService.get_store_or_404(store_id)
@@ -200,14 +224,23 @@ class StoreDishService:
                 raise NotFoundError('菜品不存在')
 
             override = StoreDishService.get_override(store_id, dish_id)
+
+            # 「填成和基础价一样」翻译成「取消价格覆盖」，得赶在权限检查之前——
+            # 这两件事算不算「改动」不一样：
+            #   本店本来没覆盖、填了个和基础价一样的数 → 什么都没变，不该要权限
+            #   本店覆盖成 38、现在改回基础价     → 真的改了，得要 dish:price:edit
+            if data.get('price') is not None and data['price'] == dish.base_price:
+                data = {**data, 'price': None}
+
             StoreDishService._assert_field_permissions(data, override)
 
             if override is None:
                 # 一个字段都没传就不必建空记录——没有行本来就等于「用默认值」
                 if not data:
                     return None
-                override = StoreDish(store_id=store_id, dish_id=dish_id)
-                db.session.add(override)
+                # is_available 显式给默认值：列上的 default 要到 INSERT 时才应用，
+                # 不然下面判「是不是全默认」的时候它还是个 None，读起来绕
+                override = StoreDish(store_id=store_id, dish_id=dish_id, is_available=True)
                 old_value = None
             else:
                 old_value = override.to_dict()
@@ -215,6 +248,14 @@ class StoreDishService:
             for field in ('price', 'is_available', 'daily_limit'):
                 if field in data:
                     setattr(override, field, data[field])
+
+            # 三样都回到默认值 = 这行等于没设置过。已经存在的删掉，刚建的干脆不存
+            if StoreDishService._is_blank(override):
+                if override.id is not None:
+                    db.session.delete(override)
+                override = None
+            elif override.id is None:
+                db.session.add(override)
 
             db.session.commit()
 
@@ -225,7 +266,7 @@ class StoreDishService:
                 resource=RESOURCE,
                 status='success',
                 old_value=old_value,
-                new_value=override.to_dict(),
+                new_value=override.to_dict() if override else None,
             )
 
             return override
@@ -242,7 +283,7 @@ class StoreDishService:
 
     @staticmethod
     def delete_override(store_id, dish_id):
-        """清除本店覆盖，恢复成「用菜品基础价、可售、不限量」
+        """清除本店覆盖，恢复成「用菜品基础价、可售、不限量」，也即是门店菜单那个恢复默认按钮的作用
 
         注意这是删除覆盖配置，不是删除菜品——菜品本身还在，只是这家店
         不再对它做特殊设置。

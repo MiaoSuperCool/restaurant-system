@@ -67,10 +67,11 @@ def set_dish(data, store_id, dish_id):
     """
     override = StoreDishService.upsert_override(store_id, dish_id, data)
     if override is None:
-        # 一个字段都没传：本来就等于「用默认值」，不必建空记录
+        # 三种情况都会走到这里：一个字段都没传 / 传的值和默认值一样 /
+        # 改完之后三样都回到了默认值。结果都一样——这家店对这道菜没特殊设置。
         return jsonify(api_response(
             success=True,
-            message='没有要改的字段',
+            message='已恢复默认设置',
             data=None,
         ))
     return jsonify(api_response(

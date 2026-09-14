@@ -138,6 +138,90 @@ def test_reset_to_default(client, admin_staff, login):
     assert client.delete(url).status_code == 404
 
 
+def test_price_back_to_base_clears_the_override(client, admin_staff, login):
+    """把价格改回基础价 = 取消本店价格覆盖，整行都不该留下
+
+    以前是「值一样也算覆盖」：改回原价后那行还在，界面上基础价被划掉、
+    操作列冒出「恢复默认」、菜品旁边挂着「本店已调整」——数字明明一样，
+    用户会以为坏了。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _setup(client)                       # 基础价 15
+    url = f'/api/stores/{store["id"]}/dishes/{dish["id"]}'
+
+    client.put(url, json={'price': '18.00'})
+    assert _menu_row(client, store['id'], dish['id'])['has_override'] is True
+
+    resp = client.put(url, json={'price': '15.00'})    # 改回基础价
+    assert resp.status_code == 200
+    assert resp.get_json()['data'] is None             # 已经没有覆盖了
+
+    row = _menu_row(client, store['id'], dish['id'])
+    assert row['price'] == 15.0
+    assert row['has_price_override'] is False
+    assert row['has_override'] is False                # 整行都撤了
+
+
+def test_back_to_base_keeps_other_overrides(client, admin_staff, login):
+    """价格改回基础价只撤价格那一项，别的设置得留着"""
+    login('admin', 'Admin123!')
+    store, dish = _setup(client)
+    url = f'/api/stores/{store["id"]}/dishes/{dish["id"]}'
+
+    # 同一道菜既涨了价、又下架
+    client.put(url, json={'price': '18.00', 'is_available': False})
+    client.put(url, json={'price': '15.00'})           # 价格改回基础价
+
+    row = _menu_row(client, store['id'], dish['id'])
+    assert row['has_price_override'] is False
+    assert row['is_available'] is False                # 下架还在
+    assert row['has_override'] is True                 # 所以行保留
+
+
+def test_delist_then_relist_clears_the_override(client, admin_staff, login):
+    """下架再上架 = 回到原状，不该留下「本店已调整」"""
+    login('admin', 'Admin123!')
+    store, dish = _setup(client)
+    url = f'/api/stores/{store["id"]}/dishes/{dish["id"]}'
+
+    client.put(url, json={'is_available': False})
+    assert _menu_row(client, store['id'], dish['id'])['has_override'] is True
+
+    client.put(url, json={'is_available': True})
+    assert _menu_row(client, store['id'], dish['id'])['has_override'] is False
+
+
+def test_filling_base_price_needs_no_permission(app, client, admin_staff, make_staff, login):
+    """本来就没覆盖、填了个和基础价一样的数 = 什么都没变，不该要改价权限
+
+    这条守着「翻译成取消覆盖」必须发生在权限检查**之前**：
+    顺序反了的话，这个请求会被当成一次改价，没 `dish:price:edit` 的角色直接吃 403。
+    """
+    from backend.app.extensions import db
+    from backend.app.models import Permission, Role
+
+    login('admin', 'Admin123!')
+    store, dish = _setup(client)                       # 基础价 15
+    client.post('/api/auth/logout')
+
+    # 造一个「能管菜单、不能改价」的角色
+    with app.app_context():
+        role = Role(code='menu_only_c', name='菜单维护C', data_scope='all', description='')
+        role.permissions = Permission.query.filter(
+            Permission.code.in_(['menu:view', 'menu:update'])
+        ).all()
+        db.session.add(role)
+        db.session.commit()
+
+    make_staff('weihu_c', 'menu_only_c')
+    login('weihu_c', 'Passw0rd!')
+
+    resp = client.put(f'/api/stores/{store["id"]}/dishes/{dish["id"]}',
+                      json={'price': '15.00'})         # 就是基础价，等于没改
+    assert resp.status_code == 200, resp.get_json()
+    assert _menu_row(client, store['id'], dish['id'])['has_override'] is False
+
+
 def test_empty_body_does_not_create_record(client, admin_staff, login):
     """一个字段都没传就别建空记录——没有行本来就等于「用默认值」"""
     login('admin', 'Admin123!')
