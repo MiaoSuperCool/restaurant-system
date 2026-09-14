@@ -6,6 +6,18 @@
       <text class="my-orders" @tap="goMyOrders">我的订单 ›</text>
     </view>
 
+    <!-- 搜索：和分类是两个独立的筛子，同时生效 -->
+    <view class="search-row">
+      <input
+        v-model="search"
+        class="search-input"
+        type="text"
+        placeholder="搜索菜品"
+        confirm-type="search"
+      />
+      <text v-if="search" class="search-clear" @tap="search = ''">✕</text>
+    </view>
+
     <scroll-view class="category-bar" scroll-x :show-scrollbar="false">
       <view class="category-row">
         <text
@@ -29,8 +41,10 @@
 
     <!-- 菜品 -->
     <scroll-view class="dish-scroll" scroll-y>
+      <!-- 空列表的提示是动态的：搜不到时要说明是在哪个分类里没搜到，
+           不然用户不知道分类还在筛 -->
       <view v-if="loading" class="hint">加载中…</view>
-      <view v-else-if="visibleDishes.length === 0" class="hint">没有可点的菜</view>
+      <view v-else-if="visibleDishes.length === 0" class="hint">{{ emptyHint }}</view>
       <view v-else class="dish-list">
         <view
           v-for="dish in visibleDishes"
@@ -184,6 +198,7 @@ const storeName = ref('')
 const dishes = ref<MenuRow[]>([])
 const loading = ref(true)
 const activeCategory = ref<number | null>(null)
+const search = ref('')
 const cartVisible = ref(false)
 const submitting = ref(false)
 
@@ -196,11 +211,25 @@ const categories = computed(() => {
   return [...seen.entries()].map(([id, name]) => ({ id, name }))
 })
 
-const visibleDishes = computed(() =>
-  activeCategory.value === null
-    ? dishes.value
-    : dishes.value.filter((dish) => dish.category_id === activeCategory.value)
-)
+const visibleDishes = computed(() => {
+  const keyword = search.value.trim()
+  return dishes.value.filter((dish) => {
+    if (activeCategory.value !== null && dish.category_id !== activeCategory.value) return false
+    // 只匹配菜名，不匹配描述——搜「辣」出来一堆不辣的菜更让人迷惑
+    if (keyword && !dish.name.includes(keyword)) return false
+    return true
+  })
+})
+
+/** 列表空了要说清为什么：是这家店没菜，还是搜索＋分类筛没了 */
+const emptyHint = computed(() => {
+  const keyword = search.value.trim()
+  if (!keyword) return '没有可点的菜'
+  const category = categories.value.find((item) => item.id === activeCategory.value)
+  return category
+    ? `「${category.name}」里没找到「${keyword}」，试试其他分类`
+    : `没找到「${keyword}」`
+})
 
 // ---------- 规格选择 ----------
 
@@ -393,6 +422,29 @@ onLoad((query) => {
 
 .my-orders {
   font-size: 26rpx;
+  color: #8a8a8a;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  padding: 0 32rpx 20rpx;
+  background: #fff;
+}
+
+.search-input {
+  flex: 1;
+  height: 64rpx;
+  background: #f5f5f5;
+  border-radius: 32rpx;
+  padding: 0 28rpx;
+  font-size: 26rpx;
+}
+
+.search-clear {
+  margin-left: 16rpx;
+  padding: 8rpx 12rpx;
+  font-size: 28rpx;
   color: #8a8a8a;
 }
 
