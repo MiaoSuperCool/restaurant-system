@@ -34,9 +34,11 @@ class DishOptionGroup(BaseModel):
 
     name = db.Column(db.String(32), nullable=False)   # 份量 / 辣度 / 加料
     selection_type = db.Column(db.String(16), nullable=False, default=TYPE_SINGLE)
-    # 必选：单选组必选 = 必须选一个；多选组必选 = 至少要选一个
+    # 决定能选几个，前端用它决定渲染成一排单选按钮还是一排复选框
     is_required = db.Column(db.Boolean, nullable=False, default=True)
+    # 必选：单选组必选 = 必须选一个；多选组必选 = 至少要选一个
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # sort_order决定在界面上排第几
 
     options = db.relationship(
         'DishOption',

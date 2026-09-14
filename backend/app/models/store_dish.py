@@ -69,5 +69,5 @@ class StoreDish(BaseModel):
             'price': float(self.price) if self.price is not None else None,
             'is_available': self.is_available,
             'daily_limit': self.daily_limit,
-            'has_price_override': self.has_price_override,
+            'has_price_override': self.has_price_override
         }

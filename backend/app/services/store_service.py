@@ -12,7 +12,7 @@ RESOURCE = 'store'
 class StoreService:
     @staticmethod
     def get_all_stores(store_ids=None):
-        """store_ids 为 None 表示不限门店（全部范围）；列表则只返回其中的门店"""
+        """store_ids 为 None 表示不限门店（全部范围）；为列表则只返回其中的门店"""
         query = Store.query
         if store_ids is not None:
             query = query.filter(Store.id.in_(store_ids))
