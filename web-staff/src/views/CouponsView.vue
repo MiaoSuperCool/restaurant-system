@@ -15,7 +15,7 @@ import {
 import CouponFormDialog from '@/components/CouponFormDialog.vue'
 import CouponIssueDialog from '@/components/CouponIssueDialog.vue'
 import { useAuthStore } from '@/stores/auth'
-import { formatLocalTime } from '@/utils/format'
+import { formatTime } from '@/utils/format'
 
 const authStore = useAuthStore()
 
@@ -199,9 +199,9 @@ onMounted(loadTemplates)
         </el-table-column>
         <el-table-column label="有效期" width="145">
           <template #default="{ row }">
-            <div>{{ row.valid_to ? formatLocalTime(row.valid_to) : '长期有效' }}</div>
+            <div>{{ row.valid_to ? formatTime(row.valid_to) : '长期有效' }}</div>
             <div v-if="row.valid_from" class="sub">
-              {{ formatLocalTime(row.valid_from) }} 起
+              {{ formatTime(row.valid_from) }} 起
             </div>
           </template>
         </el-table-column>

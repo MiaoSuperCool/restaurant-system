@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { getAuditLogs } from '@/api/audit'
 import type { AuditLog } from '@/api/types'
+import { formatTime } from '@/utils/format'
 
 const logs = ref<AuditLog[]>([])
 const total = ref(0)
@@ -98,7 +99,9 @@ onMounted(loadLogs)
         <el-table-column label="对象" width="100">
           <template #default="{ row }">{{ resourceText(row.resource) }}</template>
         </el-table-column>
-        <el-table-column prop="datetime" label="时间" />
+        <el-table-column label="时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.datetime, true) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">{{ statusText(row.status) }}</template>
         </el-table-column>

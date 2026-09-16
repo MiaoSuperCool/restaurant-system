@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   adjustPoints,
@@ -9,7 +9,9 @@ import {
   getPointsTxns,
   rechargeBalance,
 } from '@/api/members'
-import type { BalanceTxn, Member, PointsTxn } from '@/api/types'
+import { getMemberCoupons } from '@/api/coupons'
+import type { BalanceTxn, Member, PointsTxn, UserCoupon } from '@/api/types'
+import { USER_COUPON_FILTERS, USER_COUPON_STATUS_TAG, describeCoupon } from '@/constants/coupon'
 import { useAuthStore } from '@/stores/auth'
 import { formatPrice, formatTime } from '@/utils/format'
 
@@ -24,6 +26,10 @@ const canRecharge = computed(() => authStore.hasPermission('member:balance:recha
 const canSeeBalance = computed(() => authStore.hasPermission('member:balance:view'))
 // 改积分比看积分严一档——它是「凭空给人好处」，收银员没有这个码
 const canAdjustPoints = computed(() => authStore.hasPermission('points:adjust'))
+// 看券包和看余额是一类事（收银台得知道顾客有什么能用），后端也是这两个码任一
+const canSeeCoupons = computed(
+  () => canSeeBalance.value || authStore.hasPermission('coupon:verify')
+)
 
 const members = ref<Member[]>([])
 const total = ref(0)
@@ -124,31 +130,53 @@ async function handleRecharge() {
   }
 }
 
-// ---------- 资产明细（储值 + 积分两个页签） ----------
+// ---------- 资产明细（储值 + 积分 + 券包三个页签） ----------
 
 const assetsVisible = ref(false)
-const assetsTab = ref<'balance' | 'points'>('balance')
+const assetsTab = ref<'balance' | 'points' | 'coupons'>('balance')
 const assetsMember = ref<Member | null>(null)
 const balanceTxns = ref<BalanceTxn[]>([])
 const pointsTxns = ref<PointsTxn[]>([])
+const memberCoupons = ref<UserCoupon[]>([])
+const couponStatus = ref('unused')
 const assetsLoading = ref(false)
+
+/** 券包单独拉一次——换状态筛选要重新查，别的页签不动 */
+async function loadCoupons() {
+  if (!assetsMember.value) return
+  assetsLoading.value = true
+  try {
+    const data = await getMemberCoupons(assetsMember.value.id, { status: couponStatus.value })
+    memberCoupons.value = data.coupons
+  } catch {
+    // 拦截器已提示
+  } finally {
+    assetsLoading.value = false
+  }
+}
+
+watch(couponStatus, loadCoupons)
 
 async function openAssets(row: Member) {
   assetsMember.value = row
   assetsTab.value = 'balance'
   balanceTxns.value = []
   pointsTxns.value = []
+  memberCoupons.value = []
+  couponStatus.value = 'unused'
   assetsVisible.value = true
 
   assetsLoading.value = true
   try {
-    // 一起拉——两个页签收银员多半都要看（「他还有多少钱」和「多少分」）
-    const [balance, points] = await Promise.all([
+    // 一起拉——三个页签收银员多半都要看（「他还有多少钱」「多少分」「有没有券」）
+    const [balance, points, coupons] = await Promise.all([
       getBalanceTxns(row.id),
       getPointsTxns(row.id),
+      getMemberCoupons(row.id, { status: couponStatus.value }),
     ])
     balanceTxns.value = balance.txns
     pointsTxns.value = points.txns
+    memberCoupons.value = coupons.coupons
   } catch {
     // 拦截器已提示
   } finally {
@@ -349,8 +377,8 @@ onMounted(loadMembers)
       </template>
     </el-dialog>
 
-    <!-- 资产明细：储值和积分两个页签 -->
-    <el-dialog v-model="assetsVisible" title="储值与积分" width="680px">
+    <!-- 资产明细：储值、积分、券包三个页签 -->
+    <el-dialog v-model="assetsVisible" title="储值、积分与券包" width="680px">
       <p class="txn-who">
         {{ assetsMember?.nickname || '未命名' }}
         <span v-if="assetsMember?.mobile" class="muted">{{ assetsMember.mobile }}</span>
@@ -409,6 +437,57 @@ onMounted(loadMembers)
           <p class="txn-hint">
             消费 1 元返 1 分、100 分抵 1 元。<strong>积分不分本金/赠送</strong>——
             它全是送的，没有"顾客真掏的钱"。退款时按退款金额把当初返的扣回来。
+          </p>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canSeeCoupons" label="优惠券" name="coupons">
+          <el-radio-group v-model="couponStatus" size="small" class="coupon-filter">
+            <el-radio-button
+              v-for="item in USER_COUPON_FILTERS"
+              :key="item.value"
+              :value="item.value"
+            >
+              {{ item.label }}
+            </el-radio-button>
+          </el-radio-group>
+
+          <el-table v-loading="assetsLoading" :data="memberCoupons" size="small" max-height="300">
+            <el-table-column label="券" min-width="150">
+              <template #default="{ row }">
+                <div>{{ row.template_name }}</div>
+                <div class="balance-detail">{{ describeCoupon(row) }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="有效期" width="120">
+              <template #default="{ row }">
+                {{ row.valid_to ? formatTime(row.valid_to) : '长期有效' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag
+                  :type="USER_COUPON_STATUS_TAG[row.status] ?? 'info'"
+                  size="small"
+                  disable-transitions
+                >
+                  {{ row.status_label }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" min-width="130">
+              <template #default="{ row }">
+                <div v-if="row.used_at">用券 {{ formatTime(row.used_at) }}</div>
+                <div v-else>领券 {{ formatTime(row.received_at) }}</div>
+                <div v-if="row.issued_by_name" class="balance-detail">
+                  {{ row.issued_by_name }} 发放
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <p class="txn-hint">
+            「可用」里只放现在真能用上的券——过期的、还没到生效时间的都不混进来。
+            券的<strong>过期是算出来的</strong>，库里只有「未使用 / 已使用」两种状态。
           </p>
         </el-tab-pane>
       </el-tabs>
@@ -577,5 +656,10 @@ onMounted(loadMembers)
   margin-top: 12px;
   font-size: 12px;
   color: #a0a0a0;
+}
+
+/* 券包的筛选条：四档状态横着排，和上面两个页签的表格拉开一点距离 */
+.coupon-filter {
+  margin-bottom: 12px;
 }
 </style>
