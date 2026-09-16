@@ -18,9 +18,11 @@ from backend.app.models import (
     Staff,
     Store,
     StoreDish,
+    UserCoupon,
 )
 from backend.app.services.audit_service import AuditService
 from backend.app.services.balance_service import BalanceService
+from backend.app.services.coupon_service import CouponService
 from backend.app.services.points_service import PointsService
 
 RESOURCE = 'order'
@@ -299,8 +301,12 @@ class OrderService:
             )
             db.session.add(order)
 
-            # 积分抵扣放在 `build_order` **之后**：那是个纯构造（不碰数据库），
-            # 而抵扣要真的扣积分、还要改应付金额
+            # 券和积分的抵扣都放在 `build_order` **之后**：那是个纯构造（不碰数据库），
+            # 而这两步要真动数据库（标券为已用、扣积分）、还要改应付金额。
+            #
+            # 顺序无所谓——两边都按**商品原价**算（券的门槛和折扣、积分的抵扣上限），
+            # 各自独立、不用看对方算完剩多少
+            OrderService._apply_coupon(order, data.get('coupon_id'))
             OrderService._apply_points_discount(order, data.get('points_to_use') or 0)
 
             db.session.commit()
@@ -396,6 +402,31 @@ class OrderService:
         return OrderService._transition(order_id, Order.STATUS_CANCELLED, 'CANCEL_ORDER')
 
     # ---------- 收款 ----------
+
+    @staticmethod
+    def _apply_coupon(order, coupon_id):
+        """用一张券抵这单的一部分
+
+        券的抵扣额记进 `discount_amount`（那个字段从一期就留着，注释写着
+        「优惠券是二期的事」）。用了哪张券靠 `UserCoupon.used_order_id` 反查。
+        """
+        if not coupon_id:
+            return
+
+        if order.member_id is None:
+            raise BusinessError('这单没关联会员，用不了券')
+
+        coupon = db.session.get(UserCoupon, coupon_id)
+        if not coupon:
+            raise NotFoundError('券不存在')
+
+        # **别人的券不能用**——不拦的话，报个手机号就能把别人券包里的券花掉
+        if coupon.member_id != order.member_id:
+            raise BusinessError('这张券不属于这位会员')
+
+        discount = CouponService.use(coupon, order)
+        order.discount_amount = order.discount_amount + discount
+        order.payable_amount = order.payable_amount - discount
 
     @staticmethod
     def _apply_points_discount(order, points_to_use):

@@ -350,6 +350,10 @@ class CouponService:
 
         四个条件在这儿一次判完——散到各个调用点的话，迟早漏掉一个
         （最常见的是忘了判「这家店能不能用」）。
+
+        `amount` 传的是**商品原价**（`order.total_amount`），不是应付金额——
+        「满 100」说的是消费了多少，不是抵扣完还剩多少。不然会出现
+        「先用积分把金额降到 99，券就用不了了」，顾客只会觉得莫名其妙。
         """
         if coupon.status == UserCoupon.STATUS_USED:
             return '这张券已经用过了'
@@ -372,12 +376,16 @@ class CouponService:
 
     @staticmethod
     def use(coupon, order):
-        """把券用在这笔订单上
+        """把券用在这笔订单上，返回抵了多少钱
+
+        **门槛和折扣都按商品原价算**（`order.total_amount`），不看积分抵扣之后
+        剩多少——两边各自独立优惠、都以原价为基数。这样先扣积分还是先用券
+        结果一样，也不会出现「积分把金额降到门槛以下、券突然用不了」。
 
         **不 commit**——调用方多半在一个更大的事务里（下单），由它决定什么时候提交。
         和 `BalanceService.deduct` / `PointsService.redeem` 一个路子。
         """
-        reason = CouponService.check(coupon, order.store_id, order.payable_amount)
+        reason = CouponService.check(coupon, order.store_id, order.total_amount)
         if reason:
             raise BusinessError(reason)
 
@@ -385,4 +393,4 @@ class CouponService:
         coupon.used_at = datetime.now(timezone.utc)
         coupon.used_order_id = order.id
         coupon.used_store_id = order.store_id
-        return coupon.template.discount_for(order.payable_amount)
+        return coupon.template.discount_for(order.total_amount)

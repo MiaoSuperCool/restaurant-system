@@ -1,6 +1,7 @@
-"""优惠券测试：建模板、发券、券包、能用哪些券、用券
+"""优惠券测试：建模板、发券、券包、能用哪些券、下单用券
 
-「用券」现在直接调 service——它要接进订单流程才有接口（下一步）。
+券的**门槛和折扣都按商品原价算**（`order.total_amount`），不看积分抵扣后
+剩多少——所以「券 + 积分」可以叠加，先算哪个结果都一样。
 """
 
 import pytest
@@ -275,8 +276,9 @@ def test_use_coupon(as_admin, client, admin_staff, login):
 
     with as_admin():
         coupon = UserCoupon.query.first()
-        order = Order(store_id=store['id'], payable_amount=D('150.00'),
-                      order_no='T-1', query_token='x')
+        # 券看的是**商品原价**（total_amount），不是应付金额
+        order = Order(store_id=store['id'], total_amount=D('150.00'),
+                      payable_amount=D('150.00'), order_no='T-1', query_token='x')
         db.session.add(order)
         db.session.flush()
 
@@ -309,5 +311,129 @@ def test_check_returns_reason_as_text(as_admin, client, admin_staff, login):
         # 用的时候就把它抛出来
         with pytest.raises(BusinessError, match='已经过期'):
             CouponService.use(coupon, type('O', (), {'store_id': store['id'],
-                                                     'payable_amount': D('150.00'),
+                                                     'total_amount': D('150.00'),
                                                      'id': 1})())
+
+
+# ---------- 接进订单 ----------
+
+def _dish(client, name='牛肉面', base_price='150.00'):
+    import time
+    category = client.post('/api/categories',
+                           json={'name': f'面食{time.time_ns()}'}).get_json()['data']
+    return client.post('/api/dishes', json={
+        'category_id': category['id'], 'name': name, 'base_price': base_price,
+    }).get_json()['data']
+
+
+def _order(client, store_id, dish_id, member_id=None, coupon_id=None, points_to_use=0):
+    payload = {
+        'store_id': store_id,
+        'items': [{'dish_id': dish_id, 'quantity': 1, 'option_ids': []}],
+    }
+    if member_id:
+        payload['member_id'] = member_id
+    if coupon_id:
+        payload['coupon_id'] = coupon_id
+    if points_to_use:
+        payload['points_to_use'] = points_to_use
+    return client.post('/api/orders', json=payload)
+
+
+def test_order_can_pay_with_coupon(client, admin_staff, login):
+    """下单用券：应付 = 原价 − 券的抵扣
+
+    券的抵扣记进 `discount_amount`（那个字段一期就留着），
+    用了哪张券靠 `UserCoupon.used_order_id` 反查。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)          # 牛肉面 ¥150
+    member = _member(client)
+    template = _template(client).get_json()['data']      # 满 100 减 20
+    _issue(client, template['id'], [member['id']])
+
+    coupon_id = _wallet(client, member['id'])[0]['id']
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   coupon_id=coupon_id).get_json()['data']
+
+    assert order['total_amount'] == 150.0
+    assert order['discount_amount'] == 20.0              # 券抵的
+    assert order['payable_amount'] == 130.0
+
+    # 券变成已用，记下在哪单哪店用的
+    used = _wallet(client, member['id'], 'used')
+    assert len(used) == 1
+    assert used[0]['used_store_id'] == store['id']
+
+
+def test_coupon_and_points_stack(client, admin_staff, login):
+    """券和积分可以叠加，**两边都按商品原价算**
+
+    原价 ¥150：「满 100 减 20」的券能用，100 积分再抵 ¥1 → 应付 129。
+    先算哪个结果都一样——各自的基数都不看对方。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    template = _template(client).get_json()['data']
+    _issue(client, template['id'], [member['id']])
+    client.post(f'/api/members/{member["id"]}/points/adjust',
+                json={'delta': 100, 'remark': '测试'})
+
+    coupon_id = _wallet(client, member['id'])[0]['id']
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   coupon_id=coupon_id, points_to_use=100).get_json()['data']
+
+    assert order['discount_amount'] == 20.0
+    assert order['points_discount'] == 1.0
+    assert order['payable_amount'] == 129.0              # 150 − 20 − 1
+
+
+def test_cannot_use_someone_elses_coupon(client, admin_staff, login):
+    """**别人的券不能用**——不拦的话，报个手机号就能把别人券包里的券花掉"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    owner = _member(client, '13800000001', '有券的人')
+    other = _member(client, '13800000002', '没券的人')
+
+    template = _template(client).get_json()['data']
+    _issue(client, template['id'], [owner['id']])
+    coupon_id = _wallet(client, owner['id'])[0]['id']
+
+    resp = _order(client, store['id'], dish['id'], other['id'], coupon_id=coupon_id)
+    assert resp.status_code == 400
+    assert '不属于' in resp.get_json()['message']
+
+    # 券还在（没被用掉）
+    assert len(_wallet(client, owner['id'], 'unused')) == 1
+
+
+def test_scattered_order_cannot_use_coupon(client, admin_staff, login):
+    """散客单用不了券——从谁的券包里拿？"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    template = _template(client).get_json()['data']
+    _issue(client, template['id'], [member['id']])
+    coupon_id = _wallet(client, member['id'])[0]['id']
+
+    resp = _order(client, store['id'], dish['id'], coupon_id=coupon_id)
+    assert resp.status_code == 400
+    assert '没关联会员' in resp.get_json()['message']
+
+
+def test_unusable_coupon_is_rejected_with_the_reason(client, admin_staff, login):
+    """用不了的券要**把原因说出来**，不能只报个 400"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+
+    # 满 500 才能用，订单只有 150
+    template = _template(client, name='满 500 减 20',
+                         min_amount='500.00').get_json()['data']
+    _issue(client, template['id'], [member['id']])
+    coupon_id = _wallet(client, member['id'])[0]['id']
+
+    resp = _order(client, store['id'], dish['id'], member['id'], coupon_id=coupon_id)
+    assert resp.status_code == 400
+    assert '满 ¥500.00' in resp.get_json()['message']

@@ -47,6 +47,10 @@ class OrderCreateSchema(Schema):
         allow_none=True,
         metadata={'description': '会员 id；**储值支付和积分抵扣都要靠它**。不传就是散客单'},
     )
+    coupon_id = fields.Integer(
+        allow_none=True,
+        metadata={'description': '用哪张券（UserCoupon 的 id）；不传 = 不用券'},
+    )
     points_to_use = fields.Integer(
         load_default=0,
         validate=validate.Range(min=0),
