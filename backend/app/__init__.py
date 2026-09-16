@@ -115,6 +115,7 @@ def register_blueprints(app):
         audit,
         auth,
         categories,
+        coupons,
         dishes,
         groupon,
         main,
@@ -169,6 +170,7 @@ def register_blueprints(app):
     api.register_blueprint(roles.bp)  # /api/roles
     api.register_blueprint(categories.bp)  # /api/categories
     api.register_blueprint(dishes.bp)  # /api/dishes
+    api.register_blueprint(coupons.bp)  # /api/coupons（券模板 + 发券 + 会员券包）
     api.register_blueprint(store_dish.bp)  # /api/stores/<id>/menu、/api/stores/<id>/dishes/<id>
     api.register_blueprint(members.bp)  # /api/members（会员 + 储值）
     api.register_blueprint(orders.bp)  # /api/orders
