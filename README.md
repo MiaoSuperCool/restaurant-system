@@ -28,8 +28,8 @@ python create_db.py                    # 自动创建 .env 里指定的库
 # 3. 建表 → 灌权限 → 灌演示数据
 cd backend
 flask db upgrade
-flask seed-rbac                        # 37 个权限码 + 8 个预置角色
-flask seed-demo                        # 6 家门店、13 道菜、9 个账号、12 笔订单
+python manage.py seed-rbac             # 38 个权限码 + 8 个预置角色
+python manage.py seed-demo             # 6 家门店、15 道菜、9 个账号、12 笔订单
 
 # 4. 起服务
 flask run --debug                      # 后端 :5000
@@ -47,7 +47,11 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 > 不想切目录的话，用 `flask --app backend.wsgi run --debug`。
 > （`python manage.py ...` 没有这个限制，它自己会把项目根加进 `sys.path`。）
 
-> 第 3 步的 `flask db upgrade` 只是建表；**没有 `flask seed-rbac` 的话所有角色都没有权限**，
+> **`seed-rbac` 和 `seed-demo` 只能用 `python manage.py` 跑，不能用 `flask`。**
+> 它们定义在 `manage.py` 的 `FlaskGroup` 里，而 `flask` 命令从 `wsgi.py` 找应用——
+> 那个应用上只有 `db` 这类内置命令，`flask seed-rbac` 会报 `No such command`。
+
+> 第 3 步的 `flask db upgrade` 只是建表；**没有 `seed-rbac` 的话所有角色都没有权限**，
 > 除了超级管理员谁都干不了活。
 
 ## 演示账号
@@ -72,7 +76,7 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 
 - **门店管理** —— 6 家店的档案、营业状态、灰度切换模式（老系统/新系统）；删除有引用保护
 - **员工账号** —— 角色分配、门店归属、全职/兼职、公用账号
-- **权限体系** —— 37 个权限码 × 8 个预置角色 × 数据范围（本店/全部），后端强制、前端按权限渲染
+- **权限体系** —— 38 个权限码 × 8 个预置角色 × 数据范围（本店/全部），后端强制、前端按权限渲染
 - **菜单管理** —— 菜品分类（含适用门店）、菜品、规格组/选项（份量/辣度/加料，单选多选必选）
 - **多店定价** —— 同一道菜各店不同价、各店独立上下架、每日限量
 - **点单收银** —— 点单界面（分类浏览、规格选择、购物车）、接单、完成、取消、收款（支持组合支付）
@@ -98,8 +102,16 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 
 <img src="docs/screenshots/mp-menu.png" width="300" alt="小程序点单" />
 <img src="docs/screenshots/mp-picker.png" width="300" alt="规格选择" />
+- **会员 + 储值**（二期第一块）—— 会员全公司通用；储值**本金和赠送分开记**，
+  余额支付接进了收款流程（一单最多扣一笔），退款能按原消费的比例退回储值
+
+  三条规则值得单独说：
+  **① 余额必须有流水账**，不能只存一个数字——那 80 万要一分不差，全靠流水对得上
+  **② 充 100 送 20 要记两条流水**：本金是收入、赠送是营销成本，报表上是两回事
+  **③ 扣款先扣赠送再扣本金**：先花掉不能退的那部分，本金留着随时能退
+
 - **审计日志** —— 改价、上下架、发券、开停账号等关键动作自动留痕，含变更前后值
-- **角色权限矩阵** —— 8 个角色 × 37 个权限码的全貌，一眼看出谁能在哪些门店做什么
+- **角色权限矩阵** —— 8 个角色 × 38 个权限码的全貌，一眼看出谁能在哪些门店做什么
 
 ## 几个设计上的取舍
 
@@ -123,10 +135,10 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 **数据范围必须挂在角色上，不能挂在权限码上**——一旦把范围写进权限码，就得为每个
 角色各造一套权限码（`dish:price:edit:store`、`dish:price:edit:all`……），组合爆炸。
 
-权限码目录（`backend/app/rbac.py`）是**代码而不是数据库里的数据**，`flask seed-rbac`
+权限码目录（`backend/app/rbac.py`）是**代码而不是数据库里的数据**，`python manage.py seed-rbac`
 幂等同步。这样「谁把收银员的核销权限去掉了」能查 git blame，改乱了也能一键还原。
 
-全貌长这样（8 个角色 × 37 个权限码，数据范围单独一行）：
+全貌长这样（8 个角色 × 38 个权限码，数据范围单独一行）：
 
 <img src="docs/screenshots/roles.png" width="820" alt="角色权限矩阵" />
 
@@ -209,7 +221,7 @@ restaurant-system/
 │   │   ├── demo.py        # 演示数据定义
 │   │   └── utils/         # 统一响应、权限装饰器、外键引用检查
 │   ├── migrations/        # Alembic 迁移
-│   └── tests/             # pytest（96 个）
+│   └── tests/             # pytest（180 个）
 ├── web-staff/             # 内部人员网页端（Vue3）
 │   └── src/
 │       ├── api/           # axios 封装 + 按领域拆分的接口模块
@@ -234,7 +246,8 @@ restaurant-system/
 | --- | --- |
 | **微信支付** | 未对接。目前收款只是「记账」（记下方式、金额、第三方流水号），签名、回调验签、退款调用都还没写 |
 | **团购券核销** | 券码是收银员手工输入的、平台手选的，**没有真的调美团/抖音的核销接口**。真对接时要加一步「调平台接口验证券码有效性」，面额也不该由人工填 |
-| **会员 / 储值 / 积分 / 优惠券** | 二期范围，未开始。订单里已经预留了 `member_id` 字段但没加外键 |
+| **积分 / 优惠券** | 二期范围，还没做 |
+| **微信登录** | 会员表留了 `openid` / `unionid`，但没有真 AppID 接不了——所以现在只能员工代客办卡 |
 | **退款的「打款」这一步** | 流程走通了（申请→审批→确认打款→记流水），但确认打款目前只是记账，没有真的调微信退款接口 |
 | **ERP 对接 / 老系统数据迁移** | 属于二~四期，且不存在真实系统可对接 |
 | **顾客小程序的支付** | 「立即支付」只是把「钱付了」记下来，流水号带 `MOCK` 前缀。**协议层已经写好并测过**（签名/验签/AES 解密 + 自建模拟网关），差的是接到业务流程里和一个真商户号 |
@@ -247,8 +260,8 @@ restaurant-system/
 cd backend
 flask run --debug                      # 开发服务器 :5000
 flask db upgrade                       # 应用迁移
-flask seed-rbac                        # 同步权限码与角色（改了 rbac.py 之后跑）
-flask seed-demo                        # 灌演示数据（--reset 清空重建）
+python manage.py seed-rbac             # 同步权限码与角色（改了 rbac.py 之后跑）
+python manage.py seed-demo             # 灌演示数据（--reset 清空重建）
 python manage.py create-admin          # 创建超级管理员
 pytest                                 # 全部测试
 pytest --cov=app tests/                # 带覆盖率
@@ -268,7 +281,9 @@ npm run build                          # 生产构建
 1. `models/xxx.py` → `schemas/xxx_schema.py` → `services/xxx_service.py` → `api/xxx.py`
 2. 在 `app/__init__.py` 的 `register_blueprints` 里注册
 3. `flask db migrate -m "xxx"` 生成迁移
-4. 权限：在 `app/rbac.py` 的 `PERMISSIONS` 登记权限码 → 决定哪些角色拥有 → `flask seed-rbac`
+4. 权限：在 `app/rbac.py` 的 `PERMISSIONS` 登记权限码 → 决定哪些角色拥有 → `python manage.py seed-rbac`
+   （**改了 rbac.py 一定得跑这一步**：新码不落库的话，前端 `hasPermission` 就是 false，
+   按钮不显示——不报错，只是"点不到"，很难往这上面想）
 5. 接口挂 `@permission_required('xxx:yyy')`；**能碰哪些数据**另算，由 service 层按 `current_user.accessible_store_ids()` 过滤
 6. 前端：`api/xxx.ts` → `views/XxxView.vue` → router 加子路由（`meta: { permissions: [...] }`）+ Sidebar 的 `ALL_MENUS` 加一项
 
