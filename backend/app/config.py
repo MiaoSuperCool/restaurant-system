@@ -56,6 +56,18 @@ class Config:
     # 防止CSRF跨站攻击，网站之间的请求安全隔离
     SESSION_COOKIE_SAMESITE = 'Lax'
 
+    # CSRF token 的有效期：**不单独计时，跟着 session 走**
+    #
+    # Flask-WTF 默认给它 1 小时（WTF_CSRF_TIME_LIMIT = 3600）。而这个项目把
+    # signed token 缓存在 session 里重复用（见 __init__.py 的 set_csrf_cookie），
+    # 两者一叠加就出事：一小时后 token 过期了，服务端却还在拿那个过期的发给客户端，
+    # 于是所有写请求 400——刷新、重登、重启前端都没用，只能清 cookie 才恢复
+    # （清 cookie 会把 session cookie 一起清掉，服务端才被迫生成新的）。
+    #
+    # 收银台一开就是 8 小时，从第 2 小时开始全挂。所以这里设成不过期——
+    # token 本来就存在 session 里，session 没了它就没了，不需要再单独计时。
+    WTF_CSRF_TIME_LIMIT = None
+
     # 密码加密强度（2的12次方次计算），数值越高越安全，但登录越慢
     BCRYPT_ROUNDS = int(os.getenv('BCRYPT_ROUNDS', 12))
 

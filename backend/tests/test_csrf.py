@@ -75,6 +75,45 @@ def test_csrf_failure_carries_message(csrf_app, client, admin_staff):
     assert body['data'] == {'reason': 'csrf'}, '前端靠这个标记决定要不要换 token 重试'
 
 
+def test_csrf_token_does_not_expire_on_its_own(csrf_app, client, admin_staff):
+    """CSRF token 不该自己计时过期——它的生命周期跟着 session
+
+    复现用户报的问题：Flask-WTF 默认给 token 1 小时有效期
+    （`WTF_CSRF_TIME_LIMIT = 3600`），而这个项目把 signed token 缓存在 session 里
+    重复使用（见 `__init__.py` 的 `set_csrf_cookie`）。两者一叠加就出事：
+    一小时后 token 过期了，服务端**还在拿那个过期的发给客户端**（session 里有值就
+    不重新生成），于是所有写请求 400——刷新、重登、重启前端都没用，只能清 cookie
+    才恢复。收银台开 8 小时，从第 2 小时开始全挂。
+
+    这里把有效期压到 1 秒来复现：
+      - 配 1 秒 → 等一会儿，同一个 token 立刻被拒（线上那个 bug 就是这么来的）
+      - 配 None（本项目）→ 同一个 token 照样能用
+    """
+    import time
+
+    # ① 先复现「token 自己会过期」
+    csrf_app.config['WTF_CSRF_TIME_LIMIT'] = 1
+    client.get('/index')
+    with client.session_transaction() as sess:
+        token = sess.get('csrf_token_signed')
+    assert token, 'session 里应该有 signed token'
+
+    # 睡 3 秒而不是 1.2：itsdangerous 的时间戳是整数秒，判断是 `age > max_age`，
+    # 只差 1 秒的话 1 > 1 不成立，token 还不算过期
+    time.sleep(3)
+    resp = client.post('/api/auth',
+                       json={'username': 'admin', 'password': 'Admin123!'},
+                       headers={'X-CSRFToken': token})
+    assert resp.status_code == 400, '过了有效期就该被拒——这就是那个 bug 的机制'
+
+    # ② 本项目配的是 None：同一个 token 不再受时间限制
+    csrf_app.config['WTF_CSRF_TIME_LIMIT'] = None
+    resp = client.post('/api/auth',
+                       json={'username': 'admin', 'password': 'Admin123!'},
+                       headers={'X-CSRFToken': token})
+    assert resp.status_code == 200, '不单独计时之后，token 只跟着 session 走'
+
+
 def test_bad_request_also_uses_envelope(csrf_app, client, admin_staff):
     """兜底：其他 400 也要走统一信封，别漏出裸格式"""
     client.get('/index')
