@@ -4,7 +4,7 @@
 
 代码写得再完整，别人 clone 下来跑起来是个空系统，前三分钟就走了。
 `flask seed-demo` 造出 6 家门店、一套完整菜单、各角色各一个账号、
-一批各种状态的订单——打开就能点、就能演示。
+几个会员和他们的券包、一批各种状态的订单——打开就能点、就能演示。
 
 **为什么不走 service 层**
 
@@ -131,6 +131,59 @@ MEMBERS = [
     ('13800138003', '王女士', '0', '0', 0),              # 刚办卡，还没充过值
 ]
 
+COUPON_TEMPLATES = [
+    # 券模板。用 dict 不用元组：`valid_from` / `total_quantity` / `stores` 都是
+    # 可选的，元组得靠占位符凑，读起来不知道第几个是什么
+    #
+    # **有效期按「相对今天多少天」写**，不写死日期——否则 clone 下来跑两个月，
+    # 演示券全过期了。负数 = 已经过去，专门留着演示「过期是算出来的」
+    # （见 models/coupon.py 开头），不是过期了忘了删
+    {
+        'name': '满 100 减 20',
+        'type': 'full_cut', 'value': '20.00', 'min_amount': '100.00',
+        'valid_days': 30,
+        'issue': [('13800138001', 1), ('13800138002', 1)],
+    },
+    {
+        # 折扣券：value 是折扣率，不是减多少钱。两种类型都得有，
+        # 不然「折扣券」这个分支在界面上永远看不到
+        'name': '周三会员日 85 折',
+        'type': 'discount', 'value': '0.85', 'min_amount': '50.00',
+        'valid_days': 90,
+        'issue': [('13800138002', 1)],
+    },
+    {
+        # 只在这两家店能用——演示「适用门店」（在别的店点单时它不会出现）
+        'name': '解放路店周年庆 满 50 减 15',
+        'type': 'full_cut', 'value': '15.00', 'min_amount': '50.00',
+        'valid_days': 45,
+        'stores': ['S001', 'S003'],
+        'total_quantity': 200,
+        'issue': [('13800138001', 1)],
+    },
+    {
+        # 还没生效：20 天后才开始。和过期一样是算出来的，界面上单独一档
+        'name': '下月店庆 满 200 减 30',
+        'type': 'full_cut', 'value': '30.00', 'min_amount': '200.00',
+        'start_days': 20, 'valid_days': 50,
+        'issue': [('13800138001', 1)],
+    },
+    {
+        # 已经过期。**库里那行的 status 还是 unused**——这正是要演示的：
+        # 过期不是写进库的状态，是每次现算的
+        'name': '去年的老券 减 15',
+        'type': 'full_cut', 'value': '15.00', 'min_amount': '0',
+        'valid_days': -30,
+        'issue': [('13800138001', 1)],
+    },
+    {
+        # 没人领的模板：演示「发券」时有东西可选，也演示「没发出去过的能删」
+        'name': '新客立减 10 元',
+        'type': 'full_cut', 'value': '10.00', 'min_amount': '0',
+        'valid_days': 60,
+    },
+]
+
 STORE_DISH_OVERRIDES = [
     # (门店编码, 菜名, 价格 / None 表示不改价, 是否上架, 每日限量 / None 表示不限)
     # 武林门店在景区边上，整体贵一点
@@ -206,6 +259,16 @@ DEMO_REFUNDS = [
 
 # ---------------------------------------------------------------- 执行
 
+def _days_after(now, days):
+    """「今天起多少天」→ 具体时间点；None 原样返回
+
+    券的有效期都用相对天数写（见 COUPON_TEMPLATES 上面的注释），换算就这一处。
+    """
+    if days is None:
+        return None
+    return now + timedelta(days=days)
+
+
 def _clear_business_data():
     """清空业务数据（保留员工、权限、门店这些基础配置）
 
@@ -229,12 +292,16 @@ def _clear_business_data():
         PointsTxn,
         Refund,
         RefundTxn,
+        UserCoupon,
     )
 
     # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）：
     # 资产流水 → 订单 → 资产账户 → 会员——`order.member_id` 是 RESTRICT，
-    # 订单没删完就删不掉会员
-    for model in (RefundTxn, Refund, GrouponVoucher,
+    # 订单没删完就删不掉会员。
+    #
+    # **券模板不删**（所以上面没进口 CouponTemplate）：它和菜单一样算「配置」，
+    # 清掉的只是发到人手里的券。反正是按名字幂等重建的，重灌一遍就回来了
+    for model in (RefundTxn, Refund, GrouponVoucher, UserCoupon,
                   BalanceTxn, PointsTxn,
                   OrderItemOption, Payment, OrderItem, Order,
                   Balance, Points, Member,
@@ -301,6 +368,7 @@ def seed_demo(reset=False):
         Balance,
         BalanceTxn,
         Category,
+        CouponTemplate,
         Dish,
         DishOption,
         DishOptionGroup,
@@ -316,6 +384,7 @@ def seed_demo(reset=False):
         Staff,
         Store,
         StoreDish,
+        UserCoupon,
     )
     from backend.app.services.order_service import OrderService
 
@@ -323,7 +392,8 @@ def seed_demo(reset=False):
         _clear_business_data()
 
     stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0, 'members': 0,
-             'overrides': 0, 'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0}
+             'overrides': 0, 'coupon_templates': 0, 'coupons': 0,
+             'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0}
 
     # ---------- 门店 ----------
     stores_by_code = {}
@@ -467,6 +537,43 @@ def seed_demo(reset=False):
                 legacy_no=f'LEGACY-{mobile}',
                 remark='演示数据：从老系统迁过来的积分',
             ))
+    db.session.flush()
+
+    # ---------- 券模板 + 发券 ----------
+    # 模板按名字认领（幂等）；发出去的券按「这个会员手里本来有几张」补齐，
+    # 反复跑不会越攒越多，删掉几张再跑一遍又能补回演示要的数量
+    members_by_mobile = {m.mobile: m for m in Member.query.all()}
+    coupon_now = datetime.now(timezone.utc)
+    for spec in COUPON_TEMPLATES:
+        template = CouponTemplate.query.filter_by(name=spec['name']).first()
+        if not template:
+            template = CouponTemplate(
+                name=spec['name'], type=spec['type'],
+                value=Decimal(spec['value']),
+                min_amount=Decimal(spec.get('min_amount') or '0'),
+                valid_from=_days_after(coupon_now, spec.get('start_days')),
+                valid_to=_days_after(coupon_now, spec['valid_days']),
+                total_quantity=spec.get('total_quantity'),
+            )
+            template.stores = [stores_by_code[c] for c in spec.get('stores', [])]
+            db.session.add(template)
+            db.session.flush()              # 下面发券要用 template.id
+            stats['coupon_templates'] += 1
+
+        for mobile, count in spec.get('issue', []):
+            member = members_by_mobile[mobile]
+            already = UserCoupon.query.filter_by(
+                template_id=template.id, member_id=member.id).count()
+            for _ in range(count - already):
+                db.session.add(UserCoupon(
+                    template_id=template.id,
+                    member_id=member.id,
+                    received_at=coupon_now,
+                    # 发券人是「演示数据」不是某个员工——真发券时这里会是
+                    # 收银/店长的名字（见 CouponService.issue）
+                    issued_by_name='演示数据',
+                ))
+                stats['coupons'] += 1
     db.session.flush()
 
     # ---------- 订单 ----------

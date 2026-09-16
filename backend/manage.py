@@ -113,7 +113,8 @@ def seed_demo_command(reset):
     click.echo(
         f"✅ 演示数据就绪：门店 {stats['stores']}、分类 {stats['categories']}、"
         f"菜品 {stats['dishes']}、账号 {stats['staff']}、会员 {stats['members']}、"
-        f"门店定价 {stats['overrides']}、订单 {stats['orders']}、"
+        f"门店定价 {stats['overrides']}、券模板 {stats['coupon_templates']}、"
+        f"发出的券 {stats['coupons']}、订单 {stats['orders']}、"
         f"支付 {stats['payments']}"
     )
     if stats['staff']:
