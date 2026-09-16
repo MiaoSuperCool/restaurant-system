@@ -9,6 +9,7 @@ from backend.app.extensions import db
 from backend.app.models import BalanceTxn, Order, Refund, RefundTxn
 from backend.app.services.audit_service import AuditService
 from backend.app.services.balance_service import BalanceService
+from backend.app.services.points_service import PointsService
 
 RESOURCE = 'refund'
 
@@ -265,6 +266,11 @@ class RefundService:
             order = refund.order
             # 打款这一刻再校验一次：从申请到打款之间，可能又退过别的钱
             RefundService._assert_amount_available(order, refund.amount, refund.id)
+
+            # 退款要把当初返的积分扣回来——按**退款金额**算，和返的时候用同一个
+            # 换算。扣不满就扣到 0 为止（顾客可能早把积分花在别的单上了）
+            if order.member_id:
+                PointsService.revoke(order.member_id, refund.amount, order=order)
 
             # 退到储值：钱不是「给出去」，是退回顾客自己的账户。
             # 必须挂在那笔储值消费流水上——退回的金额要按原消费的比例

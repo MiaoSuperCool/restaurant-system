@@ -21,6 +21,7 @@ from backend.app.models import (
 )
 from backend.app.services.audit_service import AuditService
 from backend.app.services.balance_service import BalanceService
+from backend.app.services.points_service import PointsService
 
 RESOURCE = 'order'
 
@@ -457,6 +458,13 @@ class OrderService:
 
             order.payments.append(payment)
             order.paid_amount = order.paid_amount + amount
+
+            # 消费返积分，按**这次收款的金额**算——组合支付时每笔各返各的。
+            # **收款时返，不是下单时**：钱到手才算（用户定的规则）。
+            # 团购券核销不走这里（它自己建 Payment），那笔是券抵的，不是新花的钱。
+            # 停用的会员不返——他不该再攒新的好处
+            if order.member_id and order.member.is_active:
+                PointsService.earn(order.member_id, amount, order=order)
 
             db.session.commit()
 

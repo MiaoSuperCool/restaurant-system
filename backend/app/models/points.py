@@ -50,11 +50,13 @@ class PointsTxn(BaseModel):
     TYPE_EARN = 'earn'          # 消费返积分
     TYPE_REDEEM = 'redeem'      # 用积分抵扣（扣）
     TYPE_ADJUST = 'adjust'      # 员工手工调整（补偿、纠错）
+    TYPE_REVOKE = 'revoke'      # 退款扣回（把当初返的扣回来）
     TYPE_MIGRATE = 'migrate'    # 老系统迁移导入
     TYPE_LABELS = {
         TYPE_EARN: '消费返积分',
         TYPE_REDEEM: '积分抵扣',
         TYPE_ADJUST: '手工调整',
+        TYPE_REVOKE: '退款扣回',
         TYPE_MIGRATE: '老系统迁移',
     }
 

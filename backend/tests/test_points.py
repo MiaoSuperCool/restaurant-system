@@ -201,3 +201,155 @@ def points_app_client(client, admin_staff, login):
     """建好会员 + 登录，给「只用 HTTP 接口」的那几条测试用"""
     login('admin', 'Admin123!')
     return client, _member(client)
+
+
+# ---------- 接进订单：收款返、退款扣回 ----------
+
+def _store(client, code='S001', name='解放路店'):
+    return client.post('/api/stores', json={'code': code, 'name': name}).get_json()['data']
+
+
+def _dish(client, name='牛肉面', base_price='15.00'):
+    import time
+    category = client.post('/api/categories',
+                           json={'name': f'面食{time.time_ns()}'}).get_json()['data']
+    return client.post('/api/dishes', json={
+        'category_id': category['id'], 'name': name, 'base_price': base_price,
+    }).get_json()['data']
+
+
+def _order(client, store_id, dish_id, member_id=None, quantity=1):
+    payload = {
+        'store_id': store_id,
+        'items': [{'dish_id': dish_id, 'quantity': quantity, 'option_ids': []}],
+    }
+    if member_id:
+        payload['member_id'] = member_id
+    return client.post('/api/orders', json=payload).get_json()['data']
+
+
+def _collect(client, order_id, method, amount):
+    return client.post(f'/api/orders/{order_id}/payments',
+                       json={'method': method, 'amount': str(amount)})
+
+
+def test_collecting_earns_points(client, admin_staff, login):
+    """**收款时**返积分，不是下单时——钱到手才算
+
+    按这次收款的金额算（组合支付时每笔各返各的）。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)          # 牛肉面 ¥15
+    member = _member(client)
+
+    order = _order(client, store['id'], dish['id'], member['id'])
+    # 下单时还没返——订单建了不算数
+    assert _points(client, member['id'])['balance'] == 0
+
+    assert _collect(client, order['id'], 'cash', 15).status_code == 201
+    assert _points(client, member['id'])['balance'] == 15
+
+
+def test_partial_payment_earns_proportionally(client, admin_staff, login):
+    """组合支付：每笔各返各的（收 10 返 10、再收 5 返 5）"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    order = _order(client, store['id'], dish['id'], member['id'])
+
+    _collect(client, order['id'], 'cash', 10)
+    assert _points(client, member['id'])['balance'] == 10
+
+    _collect(client, order['id'], 'wechat', 5)
+    assert _points(client, member['id'])['balance'] == 15
+
+
+def test_scattered_order_earns_nothing(client, admin_staff, login):
+    """散客单不返——返给谁？"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    order = _order(client, store['id'], dish['id'])      # 没挂会员
+
+    assert _collect(client, order['id'], 'cash', 15).status_code == 201
+
+
+def test_disabled_member_earns_nothing(app, client, admin_staff, login):
+    """停用的会员不返——他不该再攒新的好处"""
+    from backend.app.models import Member
+
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    order = _order(client, store['id'], dish['id'], member['id'])
+
+    with app.app_context():
+        db.session.get(Member, member['id']).is_active = False
+        db.session.commit()
+
+    assert _collect(client, order['id'], 'cash', 15).status_code == 201
+    assert _points(client, member['id'])['balance'] == 0
+
+
+def test_refund_takes_points_back(client, admin_staff, make_staff, login):
+    """退款要把当初返的扣回来——按退款金额算，和返的时候同一个换算"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    order = _order(client, store['id'], dish['id'], member['id'])
+
+    _collect(client, order['id'], 'cash', 15)
+    assert _points(client, member['id'])['balance'] == 15
+    client.post('/api/auth/logout')
+
+    # 申请和审批得两个人
+    make_staff('shouyin', 'cashier', store_id=store['id'])
+    login('shouyin', 'Passw0rd!')
+    refund = client.post(f'/api/refunds/orders/{order["id"]}',
+                         json={'amount': '15.00', 'reason': '点错了'}).get_json()['data']
+    client.post('/api/auth/logout')
+
+    login('admin', 'Admin123!')
+    client.post(f'/api/refunds/{refund["id"]}/approve', json={'remark': '同意'})
+    # 审批通过还不扣——钱没出去呢
+    assert _points(client, member['id'])['balance'] == 15
+
+    assert client.post(f'/api/refunds/{refund["id"]}/settle',
+                       json={'method': 'cash'}).status_code == 200
+    # 打款了才扣
+    assert _points(client, member['id'])['balance'] == 0
+
+
+def test_revoke_stops_at_zero(as_admin, client, admin_staff, login):
+    """积分已经被花掉时，扣到 0 为止——**不让积分变负**
+
+    花 1000 分抵 10 元、再把那 10 元退掉的话，只会扣回 10 分——那 1000 分已经
+    花出去了。金额很小，而且退款要走审批流，先接受这个口子。
+    """
+    login('admin', 'Admin123!')
+    member = _member(client)
+    _adjust(client, member['id'], 5)         # 账上只有 5 分
+
+    with as_admin():
+        txn = PointsService.revoke(member['id'], Decimal('32.00'))   # 本该扣 32 分
+        db.session.commit()
+        actual = txn.delta
+        note = txn.remark
+
+    assert actual == -5                       # 只扣掉账上有的
+    assert _points(client, member['id'])['balance'] == 0
+    # 流水里写清楚了，免得看的人以为程序算错了
+    assert '扣到 0 为止' in note
+
+
+def test_revoke_on_empty_account_writes_nothing(as_admin, client, admin_staff, login):
+    """一分都没有就**不记流水**——别塞一条 0 变动的记录进去"""
+    login('admin', 'Admin123!')
+    member = _member(client)
+
+    with as_admin():
+        txn = PointsService.revoke(member['id'], Decimal('32.00'))
+        db.session.commit()
+        count = PointsTxn.query.count()
+
+    assert txn is None
+    assert count == 0

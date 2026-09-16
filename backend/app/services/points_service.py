@@ -188,6 +188,43 @@ class PointsService:
         return PointsService._record(points, PointsTxn.TYPE_ADJUST, delta, remark=remark)
 
     @staticmethod
+    def revoke(member_id, amount, order=None, remark=''):
+        """退款时把当初返的积分扣回来
+
+        消费 32 元返了 32 分，退 32 元就扣回 32 分；退 10 元就扣 10 分——
+        按**退款金额**算，和返的时候用的是同一个换算。
+
+        **扣不满就扣到 0 为止，不让积分变负。** 顾客可能早就把积分花掉了
+        （抵扣了另一单）。
+
+        这里有个已知的小口子：花 1000 分抵 10 元、再把那 10 元退掉，只会扣回
+        10 分——那 1000 分已经花出去了。金额很小，而且退款要走审批流，先接受。
+        真要堵上得让积分能变负（欠着），那是另一套账。
+
+        返回实际扣了多少分（可能比 `delta` 少，也可能不记流水）。
+        """
+        delta = PointsService.points_for_amount(amount)
+        if delta <= 0:
+            return None
+
+        points = PointsService._lock(member_id)
+        actual = min(delta, points.balance)     # 不够就扣到 0
+        if actual <= 0:
+            # 一分都没有，不用往流水里塞一条 0 变动的记录
+            return None
+
+        if not remark:
+            remark = f'订单 {order.order_no} 退款扣回积分' if order else '退款扣回积分'
+
+        txn = PointsService._record(
+            points, PointsTxn.TYPE_REVOKE, -actual, order=order, remark=remark,
+        )
+        # 没扣满的话补一句，免得看流水的人以为程序算错了
+        if actual < delta:
+            txn.remark = f'{remark}（应扣 {delta} 分，账上只有 {points.balance + actual} 分，扣到 0 为止）'
+        return txn
+
+    @staticmethod
     def migrate(member_id, balance, legacy_no, remark=''):
         """老系统迁移导入——类型记 `migrate` + 老系统单号，将来对账要能追回源头"""
         points = PointsService._lock(member_id)
