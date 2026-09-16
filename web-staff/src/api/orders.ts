@@ -40,6 +40,8 @@ export interface OrderCreatePayload {
   remark?: string
   /** 实际操作人；服务员用公用账号下单时必须传 */
   operator_id?: number
+  /** 会员 id。**储值支付要靠它**——散客单扣不了任何人的余额 */
+  member_id?: number
   items: OrderItemPayload[]
 }
 

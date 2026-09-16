@@ -2,10 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getMembers } from '@/api/members'
 import { createOrder } from '@/api/orders'
 import { getStoreOptions } from '@/api/stores'
 import { getStoreMenu } from '@/api/storeMenu'
-import type { StoreMenuRow, StoreOption } from '@/api/types'
+import type { Member, StoreMenuRow, StoreOption } from '@/api/types'
 import DishOptionPicker from '@/components/DishOptionPicker.vue'
 import type { PickedDish } from '@/components/DishOptionPicker.vue'
 import { ORDER_SOURCE_OPTIONS } from '@/constants/order'
@@ -42,6 +43,38 @@ const pickingDish = ref<StoreMenuRow | null>(null)
 const cart = ref<CartItem[]>([])
 const source = ref('dine_in')
 const remark = ref('')
+
+// ---------- 关联会员 ----------
+// 收银台那一幕：顾客报手机号 → 搜出来 → 挂到单上。挂了才能用储值付账，
+// 散客单扣不了任何人的余额
+const member = ref<Member | null>(null)
+const memberPickerVisible = ref(false)
+const memberSearch = ref('')
+const memberResults = ref<Member[]>([])
+const memberLoading = ref(false)
+
+function openMemberPicker() {
+  memberSearch.value = ''
+  memberResults.value = []
+  memberPickerVisible.value = true
+}
+
+async function searchMembers() {
+  memberLoading.value = true
+  try {
+    const data = await getMembers({ search: memberSearch.value.trim() })
+    memberResults.value = data.members
+  } catch {
+    memberResults.value = []
+  } finally {
+    memberLoading.value = false
+  }
+}
+
+function pickMember(row: Member) {
+  member.value = row
+  memberPickerVisible.value = false
+}
 
 /** 分类从菜品里现推，避免多一次请求；只展示真的上了菜的分类 */
 const categories = computed(() => {
@@ -151,6 +184,8 @@ async function handleSubmit() {
     // 只传菜品和数量，不传价格——后端会按本店实际价重算一遍
     const order = await createOrder({
       store_id: storeId.value,
+      // 不传就是散客单——收款时用不了储值
+      member_id: member.value?.id,
       source: source.value,
       remark: remark.value.trim(),
       items: cart.value.map((item) => ({
@@ -162,6 +197,7 @@ async function handleSubmit() {
     ElMessage.success(`下单成功，单号 ${order.order_no}`)
     cart.value = []
     remark.value = ''
+    member.value = null
     router.push('/orders')
   } catch {
     // 拦截器已提示（必选规格没选、本店已下架等后端也会再校验一遍）
@@ -303,6 +339,22 @@ onMounted(async () => {
             />
           </el-select>
           <el-input v-model="remark" placeholder="备注（少辣、不要香菜…）" class="full-width" />
+
+          <!-- 关联会员：挂了才能用储值付账 -->
+          <div class="member-row">
+            <template v-if="member">
+              <span class="member-name">
+                会员 {{ member.nickname || member.mobile }}
+                <span v-if="member.balance" class="member-balance">
+                  余额 {{ formatPrice(member.balance.total) }}
+                </span>
+              </span>
+              <el-button link class="member-clear" @click="member = null">×</el-button>
+            </template>
+            <el-button v-else link class="member-pick" @click="openMemberPicker">
+              + 关联会员（用储值付账要先挂上）
+            </el-button>
+          </div>
         </div>
 
         <div class="cart-foot">
@@ -329,6 +381,38 @@ onMounted(async () => {
       :dish="pickingDish"
       @confirm="addToCart"
     />
+
+    <!-- 选会员：顾客报手机号，搜出来点一行 -->
+    <el-dialog v-model="memberPickerVisible" title="关联会员" width="460px">
+      <div class="member-search">
+        <el-input
+          v-model="memberSearch"
+          placeholder="顾客报的手机号，或昵称"
+          clearable
+          @keyup.enter="searchMembers"
+          @clear="searchMembers"
+        />
+        <el-button @click="searchMembers">搜索</el-button>
+      </div>
+      <el-table
+        v-loading="memberLoading"
+        :data="memberResults"
+        size="small"
+        height="260"
+        @row-click="pickMember"
+      >
+        <el-table-column prop="nickname" label="昵称" width="110" />
+        <el-table-column prop="mobile" label="手机号" width="130" />
+        <el-table-column label="余额" min-width="90">
+          <template #default="{ row }">
+            {{ row.balance ? formatPrice(row.balance.total) : '—' }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <p class="member-hint">
+        点一行就选它。搜不到就先去「会员」页建档——散客单也能下单，只是用不了储值。
+      </p>
+    </el-dialog>
   </div>
 </template>
 
@@ -553,6 +637,44 @@ onMounted(async () => {
   gap: 8px;
   padding: 12px 0;
   border-top: 1px solid #e5e5e5;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+}
+
+.member-name {
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+.member-balance {
+  margin-left: 8px;
+  color: #8a8a8a;
+}
+
+.member-clear {
+  color: #a0a0a0;
+}
+
+.member-pick {
+  font-size: 13px;
+  color: #8a8a8a;
+}
+
+.member-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.member-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #a0a0a0;
 }
 
 .full-width {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getMember } from '@/api/members'
 import { cancelOrder, collectPayment, getOrder } from '@/api/orders'
-import type { Order } from '@/api/types'
+import type { Member, Order } from '@/api/types'
 import { ORDER_STATUS_TAG, PAYMENT_METHOD_OPTIONS } from '@/constants/order'
 import { REFUND_STATUS_TAG } from '@/constants/refund'
 import RefundApplyDialog from '@/components/RefundApplyDialog.vue'
@@ -51,6 +52,31 @@ const saving = ref(false)
 const payMethod = ref('cash')
 const payAmount = ref<number | null>(null)
 const transactionNo = ref('')
+
+/**
+ * 订单挂的会员（选了「储值」才去查）
+ *
+ * 别的支付方式用不着，白查一次没意义。而且**每次切过去都重新查**——
+ * 余额是活的，缓存一个数字没意义，收银员要看到的是此刻能不能抵这单。
+ */
+const memberInfo = ref<Member | null>(null)
+const memberLoading = ref(false)
+
+watch(payMethod, async (method) => {
+  memberInfo.value = null
+  const memberId = order.value?.member_id
+  if (method !== 'balance' || !memberId) return
+
+  memberLoading.value = true
+  try {
+    memberInfo.value = await getMember(memberId)
+  } catch {
+    // 拦截器已提示；查不到就按「看不到余额」处理，后端收款时还会再拦一次
+    memberInfo.value = null
+  } finally {
+    memberLoading.value = false
+  }
+})
 
 /** 还没收的钱。用「分」做单位算一次再换回来，避开浮点误差 */
 const remaining = computed(() => {
@@ -309,6 +335,27 @@ function handleClose() {
               核销团购券
             </el-button>
           </div>
+
+          <!-- 选了「储值」才提示余额：收银员得先知道够不够，而不是点完才吃「余额不足」 -->
+          <p v-if="payMethod === 'balance'" v-loading="memberLoading" class="balance-line">
+            <template v-if="!order.member_id">
+              <span class="balance-warn">
+                这单没关联会员，用不了储值——点单时先挂上会员，散客单扣不了任何人的余额
+              </span>
+            </template>
+            <template v-else-if="memberInfo?.balance">
+              <span class="balance-ok">
+                {{ memberInfo.nickname || memberInfo.mobile }}
+                · 余额 <strong>{{ formatPrice(memberInfo.balance.total) }}</strong>
+                <span class="balance-detail">
+                  （本金 {{ formatPrice(memberInfo.balance.principal) }}
+                  · 赠送 {{ formatPrice(memberInfo.balance.bonus) }}）
+                </span>
+              </span>
+            </template>
+            <span v-else class="muted">正在查余额…</span>
+          </p>
+
           <p class="hint">
             一个订单可以收多笔：组合支付（储值 + 现金）、先定金后尾款，分几次收都行。
             第三方流水号是财务对账的依据，线上支付务必填。
@@ -463,6 +510,27 @@ function handleClose() {
   color: #8c8c8c;
   line-height: 1.7;
   margin-top: 8px;
+}
+
+/* 选「储值」时那一行余额提示 */
+.balance-line {
+  font-size: 13px;
+  line-height: 1.7;
+  margin-top: 10px;
+  min-height: 22px;
+}
+
+.balance-ok {
+  color: #1f1f1f;
+}
+
+.balance-detail {
+  color: #8c8c8c;
+}
+
+/* 订单没挂会员：这不是「查不到」，是「这单根本用不了储值」——用红字说清楚 */
+.balance-warn {
+  color: #c45656;
 }
 
 .btn-cancel {
