@@ -9,6 +9,7 @@ from .member import Member
 from .order import Order, OrderItem, OrderItemOption
 from .payment import Payment
 from .permission import Permission
+from .points import Points, PointsTxn
 from .refund import Refund, RefundTxn
 from .role import Role
 from .staff import Staff
@@ -37,4 +38,6 @@ __all__ = [
     'Member',
     'Balance',
     'BalanceTxn',
+    'Points',
+    'PointsTxn',
 ]

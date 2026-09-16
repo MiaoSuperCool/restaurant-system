@@ -4,32 +4,14 @@
 接进收款流程才有入口。核心逻辑不能等到那时候才测，所以那几个直接调 service
 （用 `as_admin` 夹具造出「已登录」的上下文）。
 """
-from contextlib import contextmanager
 from decimal import Decimal
 
 import pytest
-from flask_login import login_user
 
 from backend.app.errors import BusinessError
 from backend.app.extensions import db
-from backend.app.models import BalanceTxn, Permission, Role, Staff
+from backend.app.models import BalanceTxn, Permission, Role
 from backend.app.services import BalanceService
-
-
-@pytest.fixture
-def as_admin(app, admin_staff):
-    """在「已登录 admin」的请求上下文里执行一段代码
-
-    用法：`with as_admin(): BalanceService.deduct(...)`
-
-    service 里要用 `current_user`（记审计），所以必须有请求上下文 + 登录态。
-    """
-    @contextmanager
-    def _ctx():
-        with app.test_request_context():
-            login_user(db.session.get(Staff, admin_staff.id))
-            yield
-    return _ctx
 
 
 def _member(client, mobile='13800000001', **extra):

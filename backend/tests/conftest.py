@@ -1,7 +1,9 @@
 """pytest 公共夹具：测试应用、客户端、测试员工账号、权限种子"""
 import itertools
+from contextlib import contextmanager
 
 import pytest
+from flask_login import login_user
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -124,3 +126,23 @@ def login(client):
     def _login(username, password):
         return client.post('/api/auth', json={'username': username, 'password': password})
     return _login
+
+
+@pytest.fixture
+def as_admin(app, admin_staff):
+    """在「已登录 admin」的请求上下文里执行一段代码
+
+    用法：`with as_admin(): SomeService.do_something(...)`
+
+    绝大多数测试走 HTTP 接口就够了。但有些 service 方法**暂时还没有接口**
+    （比如余额扣款、积分抵扣——它们要等接进订单流程才有入口），核心逻辑不能
+    等到那时候才测，就用这个夹具造出「已登录」的上下文直接调。
+
+    service 里要读 `current_user`（记审计），所以必须有请求上下文 + 登录态。
+    """
+    @contextmanager
+    def _ctx():
+        with app.test_request_context():
+            login_user(db.session.get(Staff, admin_staff.id))
+            yield
+    return _ctx

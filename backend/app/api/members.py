@@ -17,9 +17,13 @@ from flask import current_app, jsonify
 from flask_login import current_user, login_required
 from flask_smorest import Blueprint
 
-from backend.app.schemas.member_schema import MemberCreateSchema, RechargeSchema
+from backend.app.schemas.member_schema import (
+    MemberCreateSchema,
+    PointsAdjustSchema,
+    RechargeSchema,
+)
 from backend.app.schemas.query_schema import PageQuerySchema
-from backend.app.services import BalanceService, MemberService
+from backend.app.services import BalanceService, MemberService, PointsService
 from backend.app.utils.api_response import api_response
 from backend.app.utils.decorators import permission_required
 
@@ -29,20 +33,28 @@ bp = Blueprint('members', __name__, url_prefix='/api/members')
 _VIEW = ('member:view', 'member:balance:view')
 
 
-def _with_balance(member, balances):
-    """会员档案 + 储值余额
+def _asset(rows, member_id, empty_dict):
+    """组装「储值余额 / 积分」这类字段
 
-    `balances` 传 `None` 表示「这个人没有看余额的权限」——余额给 `null`，
-    前端据此显示「—」。传空字典则是「能看，只是他还没充过值」。
-    **「看不到」和「没钱」是两回事**，别都塞成 0。
+    `rows` 传 `None` 表示**当前这个人没有看的权限**——给 `null`，前端显示「—」。
+    传空字典则是「能看，只是他还没建过账户」。**「看不到」和「没有」是两回事**，
+    别都塞成 0。
+    """
+    if rows is None:
+        return None
+    row = rows.get(member_id)
+    return row.to_dict() if row else empty_dict(member_id)
+
+
+def _with_assets(member, balances, points_map):
+    """会员档案 + 储值余额 + 积分
+
+    两种资产一起给：收银台查会员就是为了看「他账上有多少钱、多少分」，
+    分三个请求没意义。
     """
     data = member.to_dict()
-    if balances is None:
-        data['balance'] = None
-    else:
-        balance = balances.get(member.id)
-        data['balance'] = (balance.to_dict() if balance
-                           else BalanceService.empty_dict(member.id))
+    data['balance'] = _asset(balances, member.id, BalanceService.empty_dict)
+    data['points'] = _asset(points_map, member.id, PointsService.empty_dict)
     return data
 
 
@@ -61,19 +73,21 @@ def index(params):
         page=params['page'], per_page=per_page, search=params.get('search')
     )
 
-    # 余额一起带上——收银台搜出人来就是要看余额，分两个请求没意义。
-    # 但**没有 member:balance:view 的人拿到的余额是 null**（不是 0，
+    # 余额和积分一起带上——收银台搜出人来就是要看这两个数，分请求没意义。
+    # 但**没有 member:balance:view 的人拿到的是 null**（不是 0，
     # 「看不到」和「没钱」是两回事）
-    can_see_balance = current_user.has_permission('member:balance:view')
-    balances = BalanceService.get_balances(
-        [member.id for member in pagination.items]
-    ) if can_see_balance else {}
+    member_ids = [member.id for member in pagination.items]
+    if current_user.has_permission('member:balance:view'):
+        balances = BalanceService.get_balances(member_ids)
+        points_map = PointsService.get_balances(member_ids)
+    else:
+        balances = points_map = None
 
     return jsonify(api_response(
         success=True,
         data={
             'members': [
-                _with_balance(member, balances if can_see_balance else None)
+                _with_assets(member, balances, points_map)
                 for member in pagination.items
             ],
             'pagination': {
@@ -97,9 +111,14 @@ def detail(member_id):
     没有 `member:balance:view` 的人也能看档案，但余额会给 null。
     """
     member = MemberService.get_or_404(member_id)
-    balances = (BalanceService.get_balances([member_id])
-                if current_user.has_permission('member:balance:view') else None)
-    return jsonify(api_response(success=True, data=_with_balance(member, balances)))
+    if current_user.has_permission('member:balance:view'):
+        balances = BalanceService.get_balances([member_id])
+        points_map = PointsService.get_balances([member_id])
+    else:
+        balances = points_map = None
+    return jsonify(api_response(
+        success=True, data=_with_assets(member, balances, points_map)
+    ))
 
 
 @bp.get('/<int:member_id>/balance/txns')
@@ -141,6 +160,52 @@ def create(data):
     """员工代客办卡（顾客端自助注册是二期后面的事，走同一套校验）"""
     member = MemberService.create(data)
     return jsonify(api_response(success=True, data=member.to_dict())), 201
+
+
+@bp.get('/<int:member_id>/points/txns')
+@bp.response(200, description='积分流水（倒序）')
+@login_required
+@permission_required('member:balance:view')
+@bp.arguments(PageQuerySchema, location='query')
+def points_txns(params, member_id):
+    """积分流水
+
+    和余额流水一样：只给一个分数，收银员没法回答「我这分怎么少了」。
+    """
+    MemberService.get_or_404(member_id)
+    per_page = params.get('per_page') or current_app.config.get('DEFAULT_PAGE_SIZE', 10)
+    pagination = PointsService.get_txns(
+        member_id, page=params['page'], per_page=per_page
+    )
+    return jsonify(api_response(
+        success=True,
+        data={
+            'txns': [txn.to_dict() for txn in pagination.items],
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages,
+            },
+        }
+    ))
+
+
+@bp.post('/<int:member_id>/points/adjust')
+@bp.response(200, description='调整成功，返回那条流水')
+@login_required
+@permission_required('points:adjust')
+@bp.arguments(PointsAdjustSchema, location='json')
+def adjust_points(data, member_id):
+    """手工调整积分（补偿、纠错）
+
+    **必须写原因**——手工加的分不写清楚为什么，事后没人说得清是谁加的、为什么。
+    这条规则在 schema 和 service 里各拦一道。
+    """
+    txn = PointsService.adjust_with_audit(
+        member_id, delta=data['delta'], remark=data['remark'],
+    )
+    return jsonify(api_response(success=True, data=txn.to_dict()))
 
 
 @bp.post('/<int:member_id>/balance/recharge')

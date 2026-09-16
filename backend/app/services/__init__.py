@@ -6,6 +6,7 @@ from .dish_service import DishService
 from .groupon_service import GrouponService
 from .member_service import MemberService
 from .order_service import OrderService
+from .points_service import PointsService
 from .public_service import PublicService
 from .refund_service import RefundService
 from .staff_service import StaffService
@@ -21,6 +22,7 @@ __all__ = [
     'GrouponService',
     'MemberService',
     'OrderService',
+    'PointsService',
     'PublicService',
     'RefundService',
     'StaffService',

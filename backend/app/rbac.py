@@ -109,6 +109,10 @@ _CASHIER_PERMISSIONS = [
 _SHIFT_MANAGER_PERMISSIONS = _CASHIER_PERMISSIONS + [
     'order:cancel', 'refund:approve', 'refund:view',
     'report:store', 'stock:view', 'schedule:manage',
+    # 补积分是门店现场的事——顾客投诉了当场补一点，值班经理得能处理。
+    # 它不涉及钱（积分全是送的），所以不用像退款那样卡限额。
+    # 店长是整个列表的超集，自动也有
+    'points:adjust',
 ]
 
 ROLES = [
