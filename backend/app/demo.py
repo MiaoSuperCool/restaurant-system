@@ -112,6 +112,14 @@ STAFF = [
     ('houcu', '周后厨', 'kitchen', 'S001', 'full_time', False),
 ]
 
+MEMBERS = [
+    # (手机号, 昵称, 充值本金, 赠送, 积分)
+    # 三个各演示一种状态，演示「会员」页时一眼能看出区别
+    ('13800138001', '陈小姐', '500.00', '50.00', 320),   # 老顾客：储值 + 积分都有
+    ('13800138002', '李先生', '200.00', '0', 1580),      # 积分攒得多，能演示抵扣
+    ('13800138003', '王女士', '0', '0', 0),              # 刚办卡，还没充过值
+]
+
 STORE_DISH_OVERRIDES = [
     # (门店编码, 菜名, 价格 / None 表示不改价, 是否上架, 每日限量 / None 表示不限)
     # 武林门店在景区边上，整体贵一点
@@ -198,18 +206,28 @@ def _clear_business_data():
     from backend.app.extensions import db
     from backend.app.models import (
         AuditLog,
+        Balance,
+        BalanceTxn,
         GrouponVoucher,
+        Member,
         Order,
         OrderItem,
         OrderItemOption,
         Payment,
+        Points,
+        PointsTxn,
         Refund,
         RefundTxn,
     )
 
-    # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）
-    for model in (RefundTxn, Refund, GrouponVoucher, OrderItemOption, Payment,
-                  OrderItem, Order, AuditLog):
+    # 按外键依赖顺序删（这些表之间是 RESTRICT，顺序反了删不掉）：
+    # 资产流水 → 订单 → 资产账户 → 会员——`order.member_id` 是 RESTRICT，
+    # 订单没删完就删不掉会员
+    for model in (RefundTxn, Refund, GrouponVoucher,
+                  BalanceTxn, PointsTxn,
+                  OrderItemOption, Payment, OrderItem, Order,
+                  Balance, Points, Member,
+                  AuditLog):
         model.query.delete()
     db.session.commit()
 
@@ -269,13 +287,18 @@ def seed_demo(reset=False):
     """
     from backend.app.extensions import db
     from backend.app.models import (
+        Balance,
+        BalanceTxn,
         Category,
         Dish,
         DishOption,
         DishOptionGroup,
         GrouponVoucher,
+        Member,
         Order,
         Payment,
+        Points,
+        PointsTxn,
         Refund,
         RefundTxn,
         Role,
@@ -288,7 +311,7 @@ def seed_demo(reset=False):
     if reset:
         _clear_business_data()
 
-    stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0,
+    stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0, 'members': 0,
              'overrides': 0, 'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0}
 
     # ---------- 门店 ----------
@@ -383,6 +406,52 @@ def seed_demo(reset=False):
         for group in dish.option_groups
         for option in group.options
     }
+
+    # ---------- 会员 + 储值 + 积分 ----------
+    # 一期的演示订单都是散客单（顾客端不登录，member_id 一直空着）；这里造几个
+    # 会员，让「会员」「储值」「积分」三个页面有东西可看。
+    #
+    # 直接建模型对象 + 流水（CLI 里没有请求上下文，走不了 service 层——和订单
+    # 那边一个道理）。但**流水的字段要和 service 记的一模一样**：本金/赠送各记
+    # 各的、带变动后余额——不然演示数据的账自己就对不上。
+    for mobile, nickname, principal, bonus, points in MEMBERS:
+        if Member.query.filter_by(mobile=mobile).first():
+            continue                        # 幂等：按手机号认领
+        member = Member(mobile=mobile, nickname=nickname)
+        db.session.add(member)
+        db.session.flush()
+        stats['members'] += 1
+
+        principal, bonus = Decimal(principal), Decimal(bonus)
+        if principal or bonus:
+            db.session.add(Balance(member_id=member.id,
+                                   principal=principal, bonus=bonus))
+            # 和 BalanceService.recharge 一样记**两条**流水：本金是收入、
+            # 赠送是营销成本，报表上是两回事
+            if principal:
+                db.session.add(BalanceTxn(
+                    member_id=member.id, type=BalanceTxn.TYPE_RECHARGE,
+                    principal_delta=principal, bonus_delta=Decimal('0'),
+                    principal_after=principal, bonus_after=Decimal('0'),
+                    remark='演示数据：开卡充值',
+                ))
+            if bonus:
+                db.session.add(BalanceTxn(
+                    member_id=member.id, type=BalanceTxn.TYPE_BONUS,
+                    principal_delta=Decimal('0'), bonus_delta=bonus,
+                    principal_after=principal, bonus_after=bonus,
+                    remark='演示数据：充值赠送',
+                ))
+
+        if points:
+            db.session.add(Points(member_id=member.id, balance=points))
+            db.session.add(PointsTxn(
+                member_id=member.id, type=PointsTxn.TYPE_MIGRATE,
+                delta=points, after=points,
+                legacy_no=f'LEGACY-{mobile}',
+                remark='演示数据：从老系统迁过来的积分',
+            ))
+    db.session.flush()
 
     # ---------- 订单 ----------
     base_time = datetime.now(timezone.utc)

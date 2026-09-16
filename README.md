@@ -281,6 +281,19 @@ npm run build                          # 生产构建
 1. `models/xxx.py` → `schemas/xxx_schema.py` → `services/xxx_service.py` → `api/xxx.py`
 2. 在 `app/__init__.py` 的 `register_blueprints` 里注册
 3. `flask db migrate -m "xxx"` 生成迁移
+
+   ⚠️ **给已有数据的表加 `nullable=False` 的列，生成的迁移会跑失败**（Alembic 不知道
+   老行该填什么）。要手工补一个 `server_default`，填完老数据再撤掉：
+
+   ```python
+   batch_op.add_column(sa.Column('points_used', sa.Integer(), nullable=False,
+                                 server_default='0'))
+   batch_op.alter_column('points_used', server_default=None)   # 别留隐式默认
+   ```
+
+   这个坑已经踩过四次（`staff.employment_type`、`order.refunded_amount`、
+   `order.query_token`、`order.points_used`），**不是偶发**——新表不受影响，
+   给老表加必填列必然会遇到。
 4. 权限：在 `app/rbac.py` 的 `PERMISSIONS` 登记权限码 → 决定哪些角色拥有 → `python manage.py seed-rbac`
    （**改了 rbac.py 一定得跑这一步**：新码不落库的话，前端 `hasPermission` 就是 false，
    按钮不显示——不报错，只是"点不到"，很难往这上面想）
