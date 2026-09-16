@@ -2,6 +2,7 @@ from .audit_log import AuditLog
 from .balance import Balance, BalanceTxn
 from .base import BaseModel
 from .category import Category
+from .coupon import CouponTemplate, UserCoupon
 from .dish import Dish
 from .dish_option import DishOption, DishOptionGroup
 from .groupon_voucher import GrouponVoucher
@@ -40,4 +41,6 @@ __all__ = [
     'BalanceTxn',
     'Points',
     'PointsTxn',
+    'CouponTemplate',
+    'UserCoupon',
 ]
