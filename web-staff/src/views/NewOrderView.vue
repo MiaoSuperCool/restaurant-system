@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMembers } from '@/api/members'
+import { getUsableCoupons } from '@/api/coupons'
 import { createOrder } from '@/api/orders'
 import { getStoreOptions } from '@/api/stores'
 import { getStoreMenu } from '@/api/storeMenu'
-import type { Member, StoreMenuRow, StoreOption } from '@/api/types'
+import type { Member, StoreMenuRow, StoreOption, UserCoupon } from '@/api/types'
 import DishOptionPicker from '@/components/DishOptionPicker.vue'
 import type { PickedDish } from '@/components/DishOptionPicker.vue'
 import { ORDER_SOURCE_OPTIONS } from '@/constants/order'
@@ -117,6 +118,64 @@ const cartTotal = computed(
 )
 const cartCount = computed(() => cart.value.reduce((sum, item) => sum + item.quantity, 0))
 
+// ---------- 用券 ----------
+// 放在购物车合计后面，是因为「哪些券能用」得看金额（门槛按商品原价算）
+//
+// 看券和看余额是同一个权限的活，后端也是这两个码任一
+const canSeeCoupons = computed(
+  () => authStore.hasPermission('member:balance:view') || authStore.hasPermission('coupon:verify')
+)
+
+const couponId = ref<number | null>(null)
+const usableCoupons = ref<UserCoupon[]>([])
+
+/**
+ * 问后端「这一单能用哪些券」
+ *
+ * **能不能用只能后端说了算**——过没过期、这家店能不能用、够不够门槛，
+ * 三条都得看。前端不自己筛，「筛漏一张」比「多问一次接口」糟得多。
+ *
+ * 金额一变就重问：门槛看的是商品原价，减掉一道菜之后原来那张券可能就
+ * 够不上了，不该还挂在下拉框里等着下单时报错。
+ */
+async function loadUsableCoupons() {
+  if (!member.value || storeId.value === null || cartTotal.value <= 0) {
+    usableCoupons.value = []
+    couponId.value = null
+    return
+  }
+  try {
+    const data = await getUsableCoupons(member.value.id, {
+      store_id: storeId.value,
+      amount: cartTotal.value,
+    })
+    usableCoupons.value = data.coupons
+    if (couponId.value !== null && !data.coupons.some((coupon) => coupon.id === couponId.value)) {
+      couponId.value = null
+    }
+  } catch {
+    // 拦截器已提示
+    usableCoupons.value = []
+  }
+}
+
+watch([() => member.value?.id, storeId, cartTotal], loadUsableCoupons)
+
+/** 选中的券能抵多少——**后端按当前金额算好给的**，不是前端拿面额自己算的 */
+const couponDiscount = computed(
+  () => usableCoupons.value.find((coupon) => coupon.id === couponId.value)?.discount ?? 0
+)
+
+/**
+ * 预计实付（**只是提示**，真正的数由后端下单时算）
+ *
+ * 券和积分是**各自独立**的：两边的基数都是商品原价，不是「扣完券再扣积分」。
+ * 所以这里是各减各的，不是连乘。
+ */
+const expectedPayable = computed(() =>
+  Math.max(cartTotal.value - couponDiscount.value - pointsDiscount.value, 0)
+)
+
 async function loadStores() {
   if (!canPickStore.value) return
   try {
@@ -202,8 +261,9 @@ async function handleSubmit() {
     // 只传菜品和数量，不传价格——后端会按本店实际价重算一遍
     const order = await createOrder({
       store_id: storeId.value,
-      // 不传就是散客单——收款时用不了储值、也用不了积分
+      // 不传就是散客单——收款时用不了储值、也用不了积分、更用不了券
       member_id: member.value?.id,
+      coupon_id: couponId.value ?? undefined,
       points_to_use: pointsToUse.value || 0,
       source: source.value,
       remark: remark.value.trim(),
@@ -217,6 +277,8 @@ async function handleSubmit() {
     cart.value = []
     remark.value = ''
     member.value = null
+    couponId.value = null
+    usableCoupons.value = []
     router.push('/orders')
   } catch {
     // 拦截器已提示（必选规格没选、本店已下架等后端也会再校验一遍）
@@ -410,6 +472,28 @@ onMounted(async () => {
               class="points-input"
             />
           </div>
+
+          <!-- 用券：挂了会员才显示。下拉里只放**这单真能用**的券 -->
+          <div v-if="member && canSeeCoupons" class="points-row">
+            <span class="member-name">
+              优惠券
+              <span v-if="usableCoupons.length === 0" class="member-balance">没有能用的</span>
+            </span>
+            <el-select
+              v-if="usableCoupons.length"
+              v-model="couponId"
+              clearable
+              placeholder="不用券"
+              class="coupon-select"
+            >
+              <el-option
+                v-for="coupon in usableCoupons"
+                :key="coupon.id"
+                :label="`${coupon.template_name}（抵 ${formatPrice(coupon.discount ?? 0)}）`"
+                :value="coupon.id"
+              />
+            </el-select>
+          </div>
         </div>
 
         <div class="cart-foot">
@@ -418,9 +502,11 @@ onMounted(async () => {
             <span class="total-value">{{ formatPrice(cartTotal) }}</span>
           </div>
           <!-- 只是提示：真正的实付由后端下单时算，提交后到订单页看确切的数 -->
-          <p v-if="pointsDiscount > 0" class="discount-line">
-            积分抵 −{{ formatPrice(pointsDiscount) }} ·
-            预计实付 {{ formatPrice(Math.max(cartTotal - pointsDiscount, 0)) }}
+          <p v-if="couponDiscount > 0 || pointsDiscount > 0" class="discount-line">
+            <span v-if="couponDiscount > 0">券抵 −{{ formatPrice(couponDiscount) }}</span>
+            <span v-if="couponDiscount > 0 && pointsDiscount > 0"> · </span>
+            <span v-if="pointsDiscount > 0">积分抵 −{{ formatPrice(pointsDiscount) }}</span>
+            · 预计实付 {{ formatPrice(expectedPayable) }}
           </p>
           <el-button
             type="primary"
@@ -777,6 +863,13 @@ onMounted(async () => {
 
 .points-input {
   width: 110px;
+}
+
+/* 券名比「用多少分」长得多（「解放路店周年庆 满 50 减 15（抵 ¥15.00）」），
+   让它把「优惠券」三个字右边剩下的宽度都吃掉，而不是截成「（抵 ¥20...」 */
+.coupon-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .discount-line {
