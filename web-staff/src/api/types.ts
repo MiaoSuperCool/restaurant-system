@@ -343,3 +343,48 @@ export interface Pagination {
   total: number
   pages: number
 }
+
+/** 储值账户（对应 balance.py 的 Balance.to_dict） */
+export interface MemberBalance {
+  member_id: number
+  /** 本金：顾客真掏的钱，**能退** */
+  principal: number
+  /** 赠送：充值送的，**不退**；扣款时它先花掉 */
+  bonus: number
+  /** 账上还能花多少 = 本金 + 赠送 */
+  total: number
+}
+
+/** 会员（对应 member.py 的 Member.to_dict） */
+export interface Member {
+  id: number
+  /** 可能为空——微信登录不一定拿得到手机号 */
+  mobile: string | null
+  nickname: string
+  avatar: string
+  is_active: boolean
+  created_at: string | null
+  /** 只有详情接口带；没有「查看储值余额」权限时是 null（不是 0，是「看不到」） */
+  balance?: MemberBalance | null
+}
+
+/** 余额流水（对应 balance.py 的 BalanceTxn.to_dict） */
+export interface BalanceTxn {
+  id: number
+  member_id: number
+  type: string
+  type_label: string
+  /** 这笔变动的总额，正负号有意义 */
+  amount: number
+  principal_delta: number
+  bonus_delta: number
+  /** 变动后的余额快照——对账时的锚点 */
+  principal_after: number
+  bonus_after: number
+  /** 消费/退回时挂着订单；充值没有 */
+  order_id: number | null
+  /** 老系统单号（迁移过来的流水才有） */
+  legacy_no: string
+  remark: string
+  created_at: string | null
+}

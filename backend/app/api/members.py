@@ -29,6 +29,23 @@ bp = Blueprint('members', __name__, url_prefix='/api/members')
 _VIEW = ('member:view', 'member:balance:view')
 
 
+def _with_balance(member, balances):
+    """会员档案 + 储值余额
+
+    `balances` 传 `None` 表示「这个人没有看余额的权限」——余额给 `null`，
+    前端据此显示「—」。传空字典则是「能看，只是他还没充过值」。
+    **「看不到」和「没钱」是两回事**，别都塞成 0。
+    """
+    data = member.to_dict()
+    if balances is None:
+        data['balance'] = None
+    else:
+        balance = balances.get(member.id)
+        data['balance'] = (balance.to_dict() if balance
+                           else BalanceService.empty_dict(member.id))
+    return data
+
+
 @bp.get('')
 @bp.response(200, description='会员列表（data.members 数组 + data.pagination）')
 @login_required
@@ -43,10 +60,22 @@ def index(params):
     pagination = MemberService.get_paginated(
         page=params['page'], per_page=per_page, search=params.get('search')
     )
+
+    # 余额一起带上——收银台搜出人来就是要看余额，分两个请求没意义。
+    # 但**没有 member:balance:view 的人拿到的余额是 null**（不是 0，
+    # 「看不到」和「没钱」是两回事）
+    can_see_balance = current_user.has_permission('member:balance:view')
+    balances = BalanceService.get_balances(
+        [member.id for member in pagination.items]
+    ) if can_see_balance else {}
+
     return jsonify(api_response(
         success=True,
         data={
-            'members': [member.to_dict() for member in pagination.items],
+            'members': [
+                _with_balance(member, balances if can_see_balance else None)
+                for member in pagination.items
+            ],
             'pagination': {
                 'page': pagination.page,
                 'per_page': pagination.per_page,
@@ -68,19 +97,9 @@ def detail(member_id):
     没有 `member:balance:view` 的人也能看档案，但余额会给 null。
     """
     member = MemberService.get_or_404(member_id)
-    data = member.to_dict()
-
-    if current_user.has_permission('member:balance:view'):
-        balance = BalanceService.get_balance(member_id)
-        # 没充过值是「还没有账户」，不是「余额为 0」——但对外都显示 0，
-        # 免得收银员看到 null 还得自己想是不是查错了
-        data['balance'] = balance.to_dict() if balance else {
-            'member_id': member_id, 'principal': 0, 'bonus': 0, 'total': 0,
-        }
-    else:
-        data['balance'] = None
-
-    return jsonify(api_response(success=True, data=data))
+    balances = (BalanceService.get_balances([member_id])
+                if current_user.has_permission('member:balance:view') else None)
+    return jsonify(api_response(success=True, data=_with_balance(member, balances)))
 
 
 @bp.get('/<int:member_id>/balance/txns')

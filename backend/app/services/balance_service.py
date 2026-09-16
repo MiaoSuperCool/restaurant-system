@@ -45,6 +45,27 @@ class BalanceService:
         return Balance.query.filter_by(member_id=member_id).first()
 
     @staticmethod
+    def get_balances(member_ids):
+        """批量取余额：`{member_id: Balance}`
+
+        列表页要显示每个人的余额，一个个查就是 N+1——和 `_query_menu` 里
+        「一次把覆盖全查出来」是同一个道理。
+        """
+        if not member_ids:
+            return {}
+        rows = Balance.query.filter(Balance.member_id.in_(member_ids)).all()
+        return {row.member_id: row for row in rows}
+
+    @staticmethod
+    def empty_dict(member_id):
+        """没充过值的账户长什么样
+
+        「还没建账户」和「余额为 0」在账上不是一回事，但对外都显示 0——
+        免得收银员看到 null 还得自己想是不是查错了。
+        """
+        return {'member_id': member_id, 'principal': 0, 'bonus': 0, 'total': 0}
+
+    @staticmethod
     def get_txns(member_id, page=1, per_page=20):
         return (BalanceTxn.query
                 .filter_by(member_id=member_id)

@@ -21,6 +21,9 @@ const ALL_MENUS = [
   { name: '订单', path: '/orders', permissions: ['order:view'] },
   { name: '退款', path: '/refunds', permissions: ['refund:view'] },
   { name: '团购券', path: '/groupon-vouchers', permissions: ['coupon:verify', 'finance:view'] },
+  // 会员：两个码任一即可。收银员有 member:balance:view（要告诉顾客还能抵多少）、
+  // 运营主管有 member:view——看余额的前提是先找到这个人，谁都不该被挡在门外
+  { name: '会员', path: '/members', permissions: ['member:view', 'member:balance:view'] },
   { name: '门店', path: '/stores', permissions: ['store:view'] },
   { name: '菜品', path: '/dishes', permissions: MENU_COMPANY_PERMISSIONS },
   { name: '分类', path: '/categories', permissions: MENU_COMPANY_PERMISSIONS },

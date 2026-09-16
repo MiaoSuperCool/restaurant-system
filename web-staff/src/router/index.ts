@@ -48,6 +48,14 @@ const router = createRouter({
           meta: { permissions: ['refund:view'] },
         },
         {
+          path: 'members',
+          name: 'members',
+          component: () => import('@/views/MembersView.vue'),
+          // 两个码任一即可：收银员有 member:balance:view（看余额）、
+          // 运营主管有 member:view（管档案）
+          meta: { permissions: ['member:view', 'member:balance:view'] },
+        },
+        {
           path: 'stores',
           name: 'stores',
           component: () => import('@/views/StoresView.vue'),
