@@ -77,9 +77,14 @@ class Order(BaseModel):
     )
     store = db.relationship('Store', backref=db.backref('orders', lazy='dynamic'))
 
-    # 会员 id：一期还没有会员表（二期做），顾客下单时先留空。
-    # 这里不加外键，等二期建表时再补迁移
-    member_id = db.Column(db.Integer, nullable=True, index=True)
+    # 会员：一期没有会员表，这一列先留空、也没加外键；二期建了表，补上。
+    # RESTRICT：被订单引用过的会员不能删（历史订单得认得他）——不过正常情况下
+    # 会员是停用（is_active=False），不删
+    member_id = db.Column(
+        db.Integer, db.ForeignKey('member.id', ondelete='RESTRICT'),
+        nullable=True, index=True,
+    )
+    member = db.relationship('Member', backref=db.backref('orders', lazy='dynamic'))
 
     source = db.Column(db.String(20), nullable=False, default=SOURCE_DINE_IN)
     status = db.Column(db.String(20), nullable=False, default=STATUS_PENDING, index=True)

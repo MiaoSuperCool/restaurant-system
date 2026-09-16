@@ -10,6 +10,7 @@ from backend.app.extensions import db
 from backend.app.models import (
     Dish,
     DishOptionGroup,
+    Member,
     Order,
     OrderItem,
     OrderItemOption,
@@ -19,6 +20,7 @@ from backend.app.models import (
     StoreDish,
 )
 from backend.app.services.audit_service import AuditService
+from backend.app.services.balance_service import BalanceService
 
 RESOURCE = 'order'
 
@@ -283,10 +285,16 @@ class OrderService:
             elif current_user.is_authenticated:
                 operator = current_user
 
+            # 会员：传了就得真的存在。挂个不存在的 id，后面储值支付会
+            # 莫名其妙地失败——不如在这里就说清楚
+            member_id = data.get('member_id')
+            if member_id and not db.session.get(Member, member_id):
+                raise NotFoundError('会员不存在')
+
             # 单开一个事务：订单和明细要么一起成功，要么一起失败
             order = OrderService.build_order(
                 store, data['items'], data['source'],
-                data.get('remark', ''), operator,
+                data.get('remark', ''), operator, member_id,
             )
             db.session.add(order)
             db.session.commit()
@@ -384,6 +392,26 @@ class OrderService:
     # ---------- 收款 ----------
 
     @staticmethod
+    def _assert_can_use_balance(order):
+        """用储值付账前的三道检查
+
+        储值支付和别的支付方式有个根本区别：**钱不是「收进来」，是从顾客自己的
+        账户里划走**。所以得先确认「这个账户存在、能用、而且这单还没动过它」——
+        任何一条不成立，这笔钱从哪来说不清。
+        """
+        if order.member_id is None:
+            raise BusinessError('这单没关联会员，用不了储值；先在点单时选会员')
+
+        if not order.member.is_active:
+            raise BusinessError('该会员已停用，不能动用储值')
+
+        # 一个订单最多一笔储值支付：拆成两笔在账上没有任何意义
+        # （真要分两次扣，为什么不一次扣完？），却会让退款时的
+        # 「按原消费比例退回」不知道该挂在哪一笔上
+        if any(p.method == Payment.METHOD_BALANCE for p in order.payments):
+            raise BusinessError('这单已经用过储值了，不能再扣一次')
+
+    @staticmethod
     def add_payment(order_id, data):
         """记一笔收款（一个订单可以有多笔：组合支付、定金+尾款）
 
@@ -402,6 +430,15 @@ class OrderService:
                 remaining = order.payable_amount - order.paid_amount
                 raise BusinessError(
                     f'收款金额超过未付部分（还剩 ¥{remaining:.2f}）'
+                )
+
+            # 储值支付：钱不是「收进来」，而是从顾客自己的账户里划走。
+            # 扣款和下面记 Payment 在同一个事务里——一起成、一起败
+            if data['method'] == Payment.METHOD_BALANCE:
+                OrderService._assert_can_use_balance(order)
+                BalanceService.deduct(
+                    order.member_id, amount, order=order,
+                    remark=f'订单 {order.order_no} 储值支付',
                 )
 
             # 支付流水号：挂在订单号后面，一眼能看出是哪一单的第几笔

@@ -276,3 +276,161 @@ def test_member_detail_hides_balance_without_permission(app, client, admin_staff
     data = client.get(f'/api/members/{member["id"]}').get_json()['data']
     assert data['mobile'] == '13800000001'
     assert data['balance'] is None
+
+
+# ---------- 储值支付（接进收款流程） ----------
+
+def _store(client, code='S001', name='解放路店'):
+    return client.post('/api/stores', json={'code': code, 'name': name}).get_json()['data']
+
+
+def _dish(client, name='牛肉面', base_price='15.00'):
+    import time
+    category = client.post('/api/categories',
+                           json={'name': f'面食{time.time_ns()}'}).get_json()['data']
+    return client.post('/api/dishes', json={
+        'category_id': category['id'], 'name': name, 'base_price': base_price,
+    }).get_json()['data']
+
+
+def _order(client, store_id, dish_id, member_id=None, quantity=1):
+    payload = {
+        'store_id': store_id,
+        'items': [{'dish_id': dish_id, 'quantity': quantity, 'option_ids': []}],
+    }
+    if member_id:
+        payload['member_id'] = member_id
+    return client.post('/api/orders', json=payload)
+
+
+def _collect(client, order_id, method, amount):
+    return client.post(f'/api/orders/{order_id}/payments',
+                       json={'method': method, 'amount': str(amount)})
+
+
+def test_balance_pays_the_bill(client, admin_staff, login):
+    """储值付账：钱从会员账户里划走，订单算已收
+
+    和别的支付方式有个根本区别——别的钱是**收进来**，储值是从顾客自己
+    账户里**划走**。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client).get_json()['data']
+    _recharge(client, member['id'], 100, 0)
+
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
+    resp = _collect(client, order['id'], 'balance', 15)
+    assert resp.status_code == 201
+    assert resp.get_json()['data']['order']['is_paid'] is True
+
+    assert _balance(client, member['id'])['principal'] == 85.0
+    detail = client.get(f'/api/orders/{order["id"]}').get_json()['data']
+    assert detail['payments'][0]['method_label'] == '储值'
+
+
+def test_scattered_order_cannot_use_balance(client, admin_staff, login):
+    """散客单用不了储值——钱从谁的账户扣？"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    order = _order(client, store['id'], dish['id']).get_json()['data']   # 没挂会员
+
+    resp = _collect(client, order['id'], 'balance', 15)
+    assert resp.status_code == 400
+    assert '没关联会员' in resp.get_json()['message']
+
+
+def test_insufficient_balance_leaves_order_unpaid(client, admin_staff, login):
+    """余额不够：整笔拒绝，**订单也不能变成已收**（同一个事务）"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client).get_json()['data']
+    _recharge(client, member['id'], 10, 0)          # 只有 10，这单要 15
+
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
+    resp = _collect(client, order['id'], 'balance', 15)
+    assert resp.status_code == 400
+    assert '余额不足' in resp.get_json()['message']
+
+    assert _balance(client, member['id'])['principal'] == 10.0
+    assert client.get(f'/api/orders/{order["id"]}').get_json()['data']['is_paid'] is False
+
+
+def test_balance_used_once_per_order(client, admin_staff, login):
+    """一单最多一笔储值支付
+
+    拆两笔在账上没意义（为什么不一次扣完？），而且退款时「按原消费比例
+    退回」会不知道该挂在哪一笔上。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client).get_json()['data']
+    _recharge(client, member['id'], 100, 0)
+
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   quantity=2).get_json()['data']      # 30 元
+
+    assert _collect(client, order['id'], 'balance', 15).status_code == 201
+    resp = _collect(client, order['id'], 'balance', 15)
+    assert resp.status_code == 400
+    assert '已经用过储值' in resp.get_json()['message']
+
+    # 剩下的换现金补上没问题——组合支付照常
+    assert _collect(client, order['id'], 'cash', 15).status_code == 201
+
+
+def test_disabled_member_cannot_pay_by_balance(app, client, admin_staff, login):
+    """停用的会员不能动用储值"""
+    from backend.app.models import Member
+
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client).get_json()['data']
+    _recharge(client, member['id'], 100, 0)
+
+    with app.app_context():
+        db.session.get(Member, member['id']).is_active = False
+        db.session.commit()
+
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
+    resp = _collect(client, order['id'], 'balance', 15)
+    assert resp.status_code == 400
+    assert '停用' in resp.get_json()['message']
+
+
+def test_refund_can_go_back_to_balance(client, admin_staff, make_staff, login):
+    """退款退到储值：钱回顾客自己的账户
+
+    余额支付的那部分钱，公司充值时就已经收过了。退现金等于公司再掏一次钱，
+    而顾客的储值还没回来——两边都对不上。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client).get_json()['data']
+    _recharge(client, member['id'], 100, 20)        # 本金 100 + 赠送 20
+
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
+    _collect(client, order['id'], 'balance', 15)
+    # 扣款先扣赠送：赠送 20 → 15，本金还是 100
+    assert _balance(client, member['id'])['bonus'] == 5.0
+    assert _balance(client, member['id'])['principal'] == 100.0
+    client.post('/api/auth/logout')
+
+    # 申请和审批必须两个人——「不能审批自己发起的退款」
+    make_staff('shouyin', 'cashier', store_id=store['id'])
+    login('shouyin', 'Passw0rd!')
+    refund = client.post(f'/api/refunds/orders/{order["id"]}',
+                         json={'amount': '15.00', 'reason': '点错了'}).get_json()['data']
+    client.post('/api/auth/logout')
+
+    login('admin', 'Admin123!')
+    assert client.post(f'/api/refunds/{refund["id"]}/approve',
+                       json={'remark': '同意'}).status_code == 200
+    resp = client.post(f'/api/refunds/{refund["id"]}/settle',
+                       json={'method': 'balance'})
+    assert resp.status_code == 200, resp.get_json()
+
+    # 退的是「赠送 15」——因为当初扣的就是赠送。按原消费比例拆，分毫不差
+    balance = _balance(client, member['id'])
+    assert balance['bonus'] == 20.0
+    assert balance['principal'] == 100.0

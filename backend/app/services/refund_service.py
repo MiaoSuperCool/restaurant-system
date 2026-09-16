@@ -6,8 +6,9 @@ from flask_login import current_user
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
-from backend.app.models import Order, Refund, RefundTxn
+from backend.app.models import BalanceTxn, Order, Refund, RefundTxn
 from backend.app.services.audit_service import AuditService
+from backend.app.services.balance_service import BalanceService
 
 RESOURCE = 'refund'
 
@@ -264,6 +265,20 @@ class RefundService:
             order = refund.order
             # 打款这一刻再校验一次：从申请到打款之间，可能又退过别的钱
             RefundService._assert_amount_available(order, refund.amount, refund.id)
+
+            # 退到储值：钱不是「给出去」，是退回顾客自己的账户。
+            # 必须挂在那笔储值消费流水上——退回的金额要按原消费的比例
+            # 拆成本金和赠送（余额支付扣的时候就是这么扣的）
+            if data['method'] == RefundTxn.METHOD_BALANCE:
+                consume = BalanceTxn.query.filter_by(
+                    order_id=order.id, type=BalanceTxn.TYPE_CONSUME
+                ).first()
+                if consume is None:
+                    raise BusinessError('这单没用过储值支付，退不回储值')
+                BalanceService.refund_to_balance(
+                    consume, refund.amount, order=order,
+                    remark=f'退款单 {refund.refund_no} 退回储值',
+                )
 
             txn = RefundTxn(
                 refund_id=refund.id,

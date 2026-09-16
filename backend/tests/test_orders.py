@@ -247,8 +247,11 @@ def test_multiple_payments(client, admin_staff, login):
         {'dish_id': dish['id'], 'quantity': 2, 'option_ids': [opt['large']]},
     ]).get_json()['data']['id']   # 单价 18（15+3），两份 36
 
+    # 这条测的是「多笔累加」，和支付方式无关。一期这里随手写的是 balance，
+    # 那会儿储值还没实现；现在储值真的能扣了，用它就得先挂会员——
+    # 换成微信，别把两件事搅在一起
     r1 = client.post(f'/api/orders/{order_id}/payments',
-                     json={'method': 'balance', 'amount': '20.00'})
+                     json={'method': 'wechat', 'amount': '20.00'})
     assert r1.status_code == 201
     assert r1.get_json()['data']['order']['paid_amount'] == 20.0
     assert r1.get_json()['data']['order']['is_paid'] is False
@@ -268,7 +271,7 @@ def test_multiple_payments(client, admin_staff, login):
     # 支付流水号挂在订单号后面，一眼看出是第几笔
     assert detail['payments'][0]['payment_no'].endswith('-P01')
     assert detail['payments'][1]['payment_no'].endswith('-P02')
-    assert detail['payments'][0]['method_label'] == '储值'
+    assert detail['payments'][0]['method_label'] == '微信支付'
 
 
 def test_order_items_are_snapshots(client, admin_staff, login):

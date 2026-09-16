@@ -43,6 +43,10 @@ class OrderCreateSchema(Schema):
         allow_none=True,
         metadata={'description': '实际操作人；服务员用公用账号下单时必须传'},
     )
+    member_id = fields.Integer(
+        allow_none=True,
+        metadata={'description': '会员 id；**储值支付要靠它**。不传就是散客单'},
+    )
     items = fields.List(
         fields.Nested(OrderItemCreateSchema),
         required=True,
