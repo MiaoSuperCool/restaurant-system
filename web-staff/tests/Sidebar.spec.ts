@@ -99,6 +99,8 @@ describe('Sidebar 菜单按权限渲染', () => {
       '订单',
       '退款',
       '团购券',
+      '优惠券',
+      '会员',
       '门店',
       '菜品',
       '分类',
@@ -114,5 +116,15 @@ describe('Sidebar 菜单按权限渲染', () => {
     loginAs(false, ['store:view', 'menu:create', 'menu:update', 'menu:delete',
                     'dish:price:edit', 'campaign:manage'])
     expect(await menuTexts()).toEqual(['主页面', '门店', '菜品', '分类', '门店菜单'])
+  })
+
+  it('券模板管理是 coupon:manage，核销的 coupon:verify 进不去', async () => {
+    // 收银员/店长有 coupon:verify（核销团购券），但「优惠券」这一页是券**模板**
+    // 管理，要 coupon:manage——两个码不能混
+    loginAs(false, ['order:view', 'coupon:verify'])
+    expect(await menuTexts()).toEqual(['主页面', '订单', '团购券'])
+
+    loginAs(false, ['order:view', 'coupon:manage'])
+    expect(await menuTexts()).toEqual(['主页面', '订单', '优惠券'])
   })
 })

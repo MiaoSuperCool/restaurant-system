@@ -21,6 +21,9 @@ const ALL_MENUS = [
   { name: '订单', path: '/orders', permissions: ['order:view'] },
   { name: '退款', path: '/refunds', permissions: ['refund:view'] },
   { name: '团购券', path: '/groupon-vouchers', permissions: ['coupon:verify', 'finance:view'] },
+  // 本店自己发的券（券模板 + 发券）——和上面的「团购券」不是一回事：
+  // 那个是美团/抖音买来的券核销，这个是自家会员券包里的券
+  { name: '优惠券', path: '/coupons', permissions: ['coupon:manage'] },
   // 会员：两个码任一即可。收银员有 member:balance:view（要告诉顾客还能抵多少）、
   // 运营主管有 member:view——看余额的前提是先找到这个人，谁都不该被挡在门外
   { name: '会员', path: '/members', permissions: ['member:view', 'member:balance:view'] },

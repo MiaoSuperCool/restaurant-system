@@ -415,3 +415,56 @@ export interface BalanceTxn {
   remark: string
   created_at: string | null
 }
+
+/** 券模板（对应 coupon.py 的 CouponTemplate.to_dict）——券的「规则」 */
+export interface CouponTemplate {
+  id: number
+  name: string
+  /** full_cut 满减 / discount 折扣 */
+  type: string
+  type_label: string
+  /** 满减是「减多少钱」；折扣是**折扣率**（0.85 = 八五折），不是减多少 */
+  value: number
+  /** 门槛：满多少才能用；0 = 无门槛 */
+  min_amount: number
+  valid_from: string | null
+  valid_to: string | null
+  /** 发放总量；null = 不限量。只约束「发」，不约束「用」 */
+  total_quantity: number | null
+  status: string
+  status_label: string
+  store_ids: number[]
+  store_names: string[]
+  /** 没指定门店 = 全公司通用 */
+  is_all_stores: boolean
+  issued_count: number
+  created_at: string | null
+}
+
+/**
+ * 用户持券（对应 coupon.py 的 UserCoupon.to_dict）——某个会员手里的一张券
+ *
+ * **`status` 有四个值，库里只存两个**：未使用 / 已使用是存进去的，
+ * 已过期 / 未生效是每次现算的（见 models/coupon.py 开头）。别拿它当库里的状态用。
+ */
+export interface UserCoupon {
+  id: number
+  template_id: number
+  template_name: string
+  template_type: string
+  template_type_label: string
+  value: number
+  min_amount: number
+  member_id: number
+  /** unused / used / expired / not_started */
+  status: string
+  status_label: string
+  valid_to: string | null
+  received_at: string | null
+  /** 谁发的；「演示数据」是种子数据发的，顾客自己领的为空 */
+  issued_by_name: string
+  used_at: string | null
+  used_store_id: number | null
+  /** 只有「这单能用哪些券」那个接口带：这张券实际能抵多少 */
+  discount?: number
+}

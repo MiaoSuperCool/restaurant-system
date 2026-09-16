@@ -41,6 +41,14 @@ const router = createRouter({
           meta: { permissions: ['coupon:verify', 'finance:view'] },
         },
         {
+          path: 'coupons',
+          name: 'coupons',
+          component: () => import('@/views/CouponsView.vue'),
+          // 券模板管理（coupon:manage）。发券是页面里单独的按钮，要 coupon:issue——
+          // 能设计券的人不一定该能随便发，后端也是两个码分开的
+          meta: { permissions: ['coupon:manage'] },
+        },
+        {
           path: 'refunds',
           name: 'refunds',
           component: () => import('@/views/RefundsView.vue'),
