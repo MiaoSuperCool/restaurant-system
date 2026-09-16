@@ -40,8 +40,10 @@ export interface OrderCreatePayload {
   remark?: string
   /** 实际操作人；服务员用公用账号下单时必须传 */
   operator_id?: number
-  /** 会员 id。**储值支付要靠它**——散客单扣不了任何人的余额 */
+  /** 会员 id。**储值支付和积分抵扣都要靠它**——散客单扣不了任何人的余额 */
   member_id?: number
+  /** 用多少积分抵扣；0 = 不用。不够或超过订单金额都会被后端拒/截断 */
+  points_to_use?: number
   items: OrderItemPayload[]
 }
 

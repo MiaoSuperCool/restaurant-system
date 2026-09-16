@@ -73,8 +73,26 @@ async function searchMembers() {
 
 function pickMember(row: Member) {
   member.value = row
+  pointsToUse.value = 0
   memberPickerVisible.value = false
 }
+
+// 用多少积分抵扣。默认 0（不抵）——收银员不问就不动它
+const pointsToUse = ref(0)
+
+/**
+ * 这些分能抵多少钱（**只是提示**，真正的数由后端下单时算）
+ *
+ * 用后端给的「全部积分抵多少」按比例折算，而不是在这儿写一遍「100 分抵 1 元」——
+ * 比例只该存在于后端，将来改了这里自动跟上。有舍入差也没关系：
+ * 收银员拿它报价，最后以订单上的实付为准。
+ */
+const pointsDiscount = computed(() => {
+  const points = member.value?.points
+  if (!points?.balance || !points.amount || pointsToUse.value <= 0) return 0
+  const ratio = pointsToUse.value / points.balance
+  return Math.round(points.amount * ratio * 100) / 100
+})
 
 /** 分类从菜品里现推，避免多一次请求；只展示真的上了菜的分类 */
 const categories = computed(() => {
@@ -184,8 +202,9 @@ async function handleSubmit() {
     // 只传菜品和数量，不传价格——后端会按本店实际价重算一遍
     const order = await createOrder({
       store_id: storeId.value,
-      // 不传就是散客单——收款时用不了储值
+      // 不传就是散客单——收款时用不了储值、也用不了积分
       member_id: member.value?.id,
+      points_to_use: pointsToUse.value || 0,
       source: source.value,
       remark: remark.value.trim(),
       items: cart.value.map((item) => ({
@@ -355,6 +374,26 @@ onMounted(async () => {
               + 关联会员（用储值付账要先挂上）
             </el-button>
           </div>
+
+          <!-- 积分抵扣：挂了会员才显示。用多少分由收银员填，后端会按订单金额截断 -->
+          <div v-if="member?.points" class="points-row">
+            <span class="member-name">
+              可用积分 {{ member.points.balance }} 分
+              <span v-if="member.points.amount" class="member-balance">
+                （抵 {{ formatPrice(member.points.amount) }}）
+              </span>
+            </span>
+            <el-input-number
+              v-model="pointsToUse"
+              :min="0"
+              :max="member.points.balance"
+              :precision="0"
+              :controls="false"
+              :disabled="member.points.balance === 0"
+              placeholder="用多少分"
+              class="points-input"
+            />
+          </div>
         </div>
 
         <div class="cart-foot">
@@ -362,6 +401,11 @@ onMounted(async () => {
             <span>合计</span>
             <span class="total-value">{{ formatPrice(cartTotal) }}</span>
           </div>
+          <!-- 只是提示：真正的实付由后端下单时算，提交后到订单页看确切的数 -->
+          <p v-if="pointsDiscount > 0" class="discount-line">
+            积分抵 −{{ formatPrice(pointsDiscount) }} ·
+            预计实付 {{ formatPrice(Math.max(cartTotal - pointsDiscount, 0)) }}
+          </p>
           <el-button
             type="primary"
             class="submit-btn"
@@ -675,6 +719,24 @@ onMounted(async () => {
   margin-top: 12px;
   font-size: 12px;
   color: #a0a0a0;
+}
+
+.points-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.points-input {
+  width: 110px;
+}
+
+.discount-line {
+  font-size: 12px;
+  color: #c45656;
+  margin-top: 4px;
 }
 
 .full-width {

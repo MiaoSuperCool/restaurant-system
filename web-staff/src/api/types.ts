@@ -360,6 +360,8 @@ export interface MemberPoints {
   member_id: number
   /** 积分余额（整数，不是钱）。**不拆本金/赠送**——积分全是送的 */
   balance: number
+  /** 这些分能抵多少钱——后端用同一套换算算好的，前端别自己乘除 */
+  amount?: number
 }
 
 /** 会员（对应 member.py 的 Member.to_dict） */

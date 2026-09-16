@@ -54,7 +54,13 @@ def _with_assets(member, balances, points_map):
     """
     data = member.to_dict()
     data['balance'] = _asset(balances, member.id, BalanceService.empty_dict)
-    data['points'] = _asset(points_map, member.id, PointsService.empty_dict)
+
+    points = _asset(points_map, member.id, PointsService.empty_dict)
+    if points is not None:
+        # 顺手把「这些分能抵多少钱」算出来——**用 service 的换算，不在这儿另写一套**。
+        # 前端拿它直接显示，收银员不用心算「320 分是几块钱」
+        points['amount'] = float(PointsService.amount_for_points(points['balance']))
+    data['points'] = points
     return data
 
 
