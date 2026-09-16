@@ -1,9 +1,11 @@
 from .audit_log import AuditLog
+from .balance import Balance, BalanceTxn
 from .base import BaseModel
 from .category import Category
 from .dish import Dish
 from .dish_option import DishOption, DishOptionGroup
 from .groupon_voucher import GrouponVoucher
+from .member import Member
 from .order import Order, OrderItem, OrderItemOption
 from .payment import Payment
 from .permission import Permission
@@ -32,4 +34,7 @@ __all__ = [
     'Refund',
     'RefundTxn',
     'GrouponVoucher',
+    'Member',
+    'Balance',
+    'BalanceTxn',
 ]

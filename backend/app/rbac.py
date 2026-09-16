@@ -58,6 +58,10 @@ PERMISSIONS = [
     # 会员
     ('member:view', '会员查看', '会员'),
     ('member:balance:view', '查看储值余额', '会员'),
+    # 充值和「看余额」分开：看余额是查，充值是**钱的入口**（能凭空给账户加钱，
+    # 风险高）。设计文档没给充值单独的码，但收银台天天要给顾客充卡，
+    # 不能塞进 member:manage（那还包含改会员资料，收银员不该有）
+    ('member:balance:recharge', '储值充值', '会员'),
     ('member:manage', '会员管理', '会员'),
     ('points:adjust', '调整积分', '会员'),
 
@@ -94,7 +98,10 @@ _FRONT_LINE_MENU = ['menu:view']
 # 收银员的权限集合，值班经理和店长都是它的超集，抽出来避免三处各写一遍
 _CASHIER_PERMISSIONS = [
     'order:create', 'order:receive', 'order:view',
-    'pay:collect', 'coupon:verify', 'member:balance:view', 'refund:apply',
+    'pay:collect', 'coupon:verify',
+    # 收银台要能查顾客余额（不然没法告诉他还能抵多少），也要能给他充卡
+    'member:balance:view', 'member:balance:recharge',
+    'refund:apply',
     *_FRONT_LINE_MENU,
 ]
 
