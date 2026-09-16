@@ -289,30 +289,43 @@ class CouponService:
     def get_member_coupons(member_id, status=None, page=1, per_page=20):
         """某个会员的券包
 
-        `status` 传 `unused` / `used` / `expired`——**`expired` 是算出来的**，
-        不是库里的值（见 `UserCoupon.is_expired`）
+        `status` 传 `unused` / `used` / `expired` / `not_started`——后两个
+        **都是算出来的**，库里只存未用/已用（见 `UserCoupon.display_status`）。
+
+        这里是**唯一**把「过期/未生效」翻译成 SQL 的地方，条件和
+        `is_expired` / `not_started` 严格对应。别处（比如 `get_usable_coupons`）
+        都是在 Python 里逐张过 `check()`——一个人手里撑死几十张券，过一遍比
+        翻成 SQL 好读，也不会两边走偏。
         """
         query = (UserCoupon.query
                  .filter_by(member_id=member_id)
                  .options(joinedload(UserCoupon.template)))
 
+        # 库里存的是不带时区的 UTC，SQL 里的比较也要用同样的形式
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
         if status == UserCoupon.STATUS_USED:
             query = query.filter(UserCoupon.status == UserCoupon.STATUS_USED)
         elif status == 'expired':
-            # 过期 = 没用过 且 模板的 valid_to 已经过了。不写库，所以只能在
-            # SQL 里判——条件要和 `is_expired` 保持一致
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            # 过期 = 没用过 且 valid_to 已经过了
             query = (query.filter(UserCoupon.status == UserCoupon.STATUS_UNUSED)
                      .join(CouponTemplate)
                      .filter(CouponTemplate.valid_to.isnot(None),
                              CouponTemplate.valid_to < now))
+        elif status == 'not_started':
+            query = (query.filter(UserCoupon.status == UserCoupon.STATUS_UNUSED)
+                     .join(CouponTemplate)
+                     .filter(CouponTemplate.valid_from.isnot(None),
+                             CouponTemplate.valid_from > now))
         elif status == UserCoupon.STATUS_UNUSED:
-            # 「未使用」不含已过期的——顾客看到的「可用券」不该混进过期的
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            # 「未使用」= 没用过 **且 已生效 且 没过期**——顾客眼里的「可用券」
+            # 不该混进过期的，也不该混进还没到生效时间的
             query = (query.filter(UserCoupon.status == UserCoupon.STATUS_UNUSED)
                      .join(CouponTemplate)
                      .filter(db.or_(CouponTemplate.valid_to.is_(None),
-                                    CouponTemplate.valid_to >= now)))
+                                    CouponTemplate.valid_to >= now))
+                     .filter(db.or_(CouponTemplate.valid_from.is_(None),
+                                    CouponTemplate.valid_from <= now)))
 
         return (query.order_by(UserCoupon.id.desc())
                 .paginate(page=page, per_page=per_page, error_out=False))
@@ -348,8 +361,9 @@ class CouponService:
         **返回原因而不是抛异常**，因为「查这单能用哪些券」只是查、不是操作。
         真要用了再由 `use()` 把它抛出来。
 
-        四个条件在这儿一次判完——散到各个调用点的话，迟早漏掉一个
+        五个条件在这儿一次判完——散到各个调用点的话，迟早漏掉一个
         （最常见的是忘了判「这家店能不能用」）。
+        里面「过期」和「还没生效」都是**现算的**，库里没有这两个状态。
 
         `amount` 传的是**商品原价**（`order.total_amount`），不是应付金额——
         「满 100」说的是消费了多少，不是抵扣完还剩多少。不然会出现
@@ -360,6 +374,9 @@ class CouponService:
 
         if coupon.is_expired:
             return '这张券已经过期了'
+
+        if coupon.not_started:
+            return '这张券还没到生效时间'
 
         if not coupon.template.usable_at(store_id):
             return '这张券不适用于这家门店'

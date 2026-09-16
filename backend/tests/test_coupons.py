@@ -200,8 +200,8 @@ def _store(client, code='S001', name='解放路店'):
     return client.post('/api/stores', json={'code': code, 'name': name}).get_json()['data']
 
 
-def test_usable_requires_all_four_conditions(client, admin_staff, login):
-    """四个条件各拦一类券：用过 / 过期 / 不适用这家店 / 不够门槛"""
+def test_usable_requires_all_conditions(client, admin_staff, login):
+    """五个条件各拦一类券：用过 / 过期 / 还没生效 / 不适用这家店 / 不够门槛"""
     login('admin', 'Admin123!')
     store = _store(client)
     other = _store(client, code='S002', name='文化路店')
@@ -210,21 +210,46 @@ def test_usable_requires_all_four_conditions(client, admin_staff, login):
     ok = _template(client, name='能用的券').get_json()['data']
     expired = _template(client, name='过期的券',
                         valid_to='2020-01-01T00:00:00').get_json()['data']
+    not_yet = _template(client, name='下月才开始',
+                        valid_from='2099-01-01T00:00:00').get_json()['data']
     elsewhere = _template(client, name='只在那家店能用',
                           store_ids=[other['id']]).get_json()['data']
     too_high = _template(client, name='满 500 才能用',
                          min_amount='500.00').get_json()['data']
 
-    ids = [t['id'] for t in (ok, expired, elsewhere, too_high)]
-    _issue(client, ids[0], [member['id']])
-    _issue(client, ids[1], [member['id']])
-    _issue(client, ids[2], [member['id']])
-    _issue(client, ids[3], [member['id']])
-    assert len(_wallet(client, member['id'])) == 4
+    ids = [t['id'] for t in (ok, expired, not_yet, elsewhere, too_high)]
+    for template_id in ids:
+        _issue(client, template_id, [member['id']])
+    assert len(_wallet(client, member['id'])) == 5
 
     usable = _usable(client, member['id'], store['id'], '150.00')
     assert [c['template_name'] for c in usable] == ['能用的券']
     assert usable[0]['discount'] == 20.0        # 满 100 减 20
+
+
+def test_not_started_is_computed_too(app, client, admin_staff, login):
+    """还没生效的券：**和过期一样是算出来的**，不是库里第三个状态
+
+    「未使用」那一档不能混进它——顾客点开券包看「可用」，还没到生效时间的
+    券冒出来、结账时又用不了，比直接看不到更让人恼火。
+    """
+    login('admin', 'Admin123!')
+    store = _store(client)
+    template = _template(client, name='下月才开始',
+                         valid_from='2099-01-01T00:00:00').get_json()['data']
+    member = _member(client)
+    _issue(client, template['id'], [member['id']])
+
+    assert len(_wallet(client, member['id'], 'not_started')) == 1
+    assert len(_wallet(client, member['id'], 'unused')) == 0
+    assert _usable(client, member['id'], store['id'], '150.00') == []
+
+    with app.app_context():
+        coupon = UserCoupon.query.first()
+        assert coupon.status == UserCoupon.STATUS_UNUSED    # 库里没动过
+        assert coupon.display_status == 'not_started'
+        # 真要用的话，理由得说清是「还没到时间」而不是「过期了」
+        assert CouponService.check(coupon, store['id'], 150) == '这张券还没到生效时间'
 
 
 def test_usable_sorts_by_discount(client, admin_staff, login):

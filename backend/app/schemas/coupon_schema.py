@@ -106,8 +106,10 @@ class CouponQuerySchema(PageQuerySchema):
 
     status = fields.Str(
         required=False,
-        validate=one_of({'unused': '未使用', 'used': '已使用', 'expired': '已过期'}),
-        metadata={'description': '不传 = 全部。**expired 是算出来的**，不是库里的状态'},
+        validate=one_of({'unused': '未使用', 'used': '已使用',
+                         'expired': '已过期', 'not_started': '未生效'}),
+        metadata={'description': '不传 = 全部。**expired / not_started 都是算出来的**，'
+                                 '不是库里的状态；unused 不含这两种'},
     )
 
 

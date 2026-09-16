@@ -182,27 +182,47 @@ class UserCoupon(BaseModel):
 
     order = db.relationship('Order', backref=db.backref('used_coupons', lazy='dynamic'))
 
+    @staticmethod
+    def _as_aware(moment):
+        """库里存的是不带时区的 UTC，比之前补上，免得 naive/aware 相减报错"""
+        if moment is not None and moment.tzinfo is None:
+            return moment.replace(tzinfo=timezone.utc)
+        return moment
+
     @property
     def is_expired(self):
         """过期了没——**每次现算**，不依赖库里的 status"""
-        valid_to = self.template.valid_to
-        if valid_to is None:
-            return False
-        # 库里存的是不带时区的 UTC，比之前补上，免得 naive/aware 相减报错
-        if valid_to.tzinfo is None:
-            valid_to = valid_to.replace(tzinfo=timezone.utc)
-        return valid_to < datetime.now(timezone.utc)
+        valid_to = self._as_aware(self.template.valid_to)
+        return valid_to is not None and valid_to < datetime.now(timezone.utc)
+
+    @property
+    def not_started(self):
+        """还没到生效时间——**和过期一样是算出来的**
+
+        「从下周一开始的券」和「已经过期的券」都是「现在用不了」，
+        但原因不同、该说的话也不同，所以分开两个状态。
+        """
+        valid_from = self._as_aware(self.template.valid_from)
+        return valid_from is not None and valid_from > datetime.now(timezone.utc)
 
     @property
     def display_status(self):
-        """给人看的状态：未用 / 已用 / 已过期"""
+        """给人看的状态：未使用 / 已使用 / 已过期 / 未生效
+
+        库里只存「未使用 / 已使用」两种，另外两种是算出来的。
+        """
         if self.status == self.STATUS_USED:
             return self.STATUS_USED
-        return 'expired' if self.is_expired else self.STATUS_UNUSED
+        if self.is_expired:
+            return 'expired'
+        if self.not_started:
+            return 'not_started'
+        return self.STATUS_UNUSED
 
     def to_dict(self):
         status = self.display_status
-        labels = {'unused': '未使用', 'used': '已使用', 'expired': '已过期'}
+        labels = {'unused': '未使用', 'used': '已使用',
+                  'expired': '已过期', 'not_started': '未生效'}
         return {
             'id': self.id,
             'template_id': self.template_id,
