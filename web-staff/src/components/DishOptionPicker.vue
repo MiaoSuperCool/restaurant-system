@@ -24,9 +24,14 @@ const emit = defineEmits<{
   (e: 'confirm', picked: PickedDish): void
 }>()
 
-/** 组 id → 选中的选项 id 列表（单选组最多一个，多选组任意） */
-const selected = ref<Record<number, number[]>>({})
+/** 组 id → { 选项 id: 份数 }。加料可以加多份（加蛋 ×2），单选组份数恒为 1 */
+const selected = ref<Record<number, Record<number, number>>>({})
 const quantity = ref(1)
+
+/** 某个选项选了几份（0 = 没选） */
+function countOf(groupId: number, optionId: number): number {
+  return selected.value[groupId]?.[optionId] ?? 0
+}
 
 watch(
   () => props.modelValue,
@@ -34,24 +39,24 @@ watch(
     if (!visible) return
     quantity.value = 1
     // 必选组默认选第一个——收银员点得最快，不用每次都手动选「标准份」
-    const initial: Record<number, number[]> = {}
+    const initial: Record<number, Record<number, number>> = {}
     for (const group of props.dish?.option_groups ?? []) {
       initial[group.id] = group.is_required && group.options.length > 0
-        ? [group.options[0].id]
-        : []
+        ? { [group.options[0].id]: 1 }
+        : {}
     }
     selected.value = initial
   }
 )
 
-/** 按规格组的顺序铺平选中的选项，算加价合计 */
+/** 按规格组的顺序铺平选中的选项，带上份数，算加价合计 */
 const chosenOptions = computed(() => {
-  const result: { id: number; name: string; extra_price: number }[] = []
+  const result: { id: number; name: string; extra_price: number; count: number }[] = []
   for (const group of props.dish?.option_groups ?? []) {
-    const ids = selected.value[group.id] ?? []
     for (const option of group.options) {
-      if (ids.includes(option.id)) {
-        result.push({ id: option.id, name: option.name, extra_price: option.extra_price })
+      const count = countOf(group.id, option.id)
+      if (count > 0) {
+        result.push({ id: option.id, name: option.name, extra_price: option.extra_price, count })
       }
     }
   }
@@ -60,18 +65,40 @@ const chosenOptions = computed(() => {
 
 const unitPrice = computed(() => {
   const base = props.dish?.price ?? 0
-  return chosenOptions.value.reduce((sum, option) => sum + option.extra_price, base)
+  return chosenOptions.value.reduce(
+    (sum, option) => sum + option.extra_price * option.count, base
+  )
 })
 
 const subtotal = computed(() => unitPrice.value * quantity.value)
 
-/** 单选组用 radio，多选组用 checkbox——el-radio-group 的 v-model 是单值，这里转一下 */
+/** 单选组用 radio——el-radio-group 的 v-model 是单值，这里转一下 */
 function singleValue(groupId: number): number | undefined {
-  return selected.value[groupId]?.[0]
+  const counts = selected.value[groupId]
+  if (!counts) return undefined
+  const ids = Object.keys(counts)
+  return ids.length > 0 ? Number(ids[0]) : undefined
 }
 
 function setSingle(groupId: number, value: number) {
-  selected.value = { ...selected.value, [groupId]: [value] }
+  selected.value = { ...selected.value, [groupId]: { [value]: 1 } }
+}
+
+/** 多选组：勾上 = 1 份，取消 = 0 份 */
+function toggleMultiple(groupId: number, optionId: number, checked: boolean) {
+  const counts = { ...(selected.value[groupId] ?? {}) }
+  if (checked) counts[optionId] = counts[optionId] || 1
+  else delete counts[optionId]
+  selected.value = { ...selected.value, [groupId]: counts }
+}
+
+/** 加减份数，减到 0 就是取消这一项 */
+function changeCount(groupId: number, optionId: number, delta: number) {
+  const counts = { ...(selected.value[groupId] ?? {}) }
+  const next = (counts[optionId] ?? 0) + delta
+  if (next <= 0) delete counts[optionId]
+  else counts[optionId] = next
+  selected.value = { ...selected.value, [groupId]: counts }
 }
 
 function handleConfirm() {
@@ -80,8 +107,8 @@ function handleConfirm() {
 
   // 和后端同样的校验，错了在这里就说清楚，别等到提交才报 400
   for (const group of dish.option_groups) {
-    const picked = selected.value[group.id] ?? []
-    if (group.is_required && picked.length === 0) {
+    const counts = selected.value[group.id] ?? {}
+    if (group.is_required && Object.keys(counts).length === 0) {
       ElMessage.warning(`请选择「${group.name}」`)
       return
     }
@@ -92,8 +119,11 @@ function handleConfirm() {
     name: dish.name,
     unit_price: unitPrice.value,
     quantity: quantity.value,
-    option_ids: chosenOptions.value.map((option) => option.id),
-    options_text: chosenOptions.value.map((option) => option.name).join(','),
+    // 同一个 id 重复几次就是几份——后端的约定
+    option_ids: chosenOptions.value.flatMap((option) => Array(option.count).fill(option.id)),
+    options_text: chosenOptions.value
+      .map((option) => (option.count > 1 ? `${option.name}×${option.count}` : option.name))
+      .join(','),
   })
   emit('update:modelValue', false)
 }
@@ -138,18 +168,25 @@ function handleClose() {
           </el-radio>
         </el-radio-group>
 
-        <!-- 多选组 -->
-        <el-checkbox-group v-else v-model="selected[group.id]">
-          <el-checkbox
-            v-for="option in group.options"
-            :key="option.id"
-            :value="option.id"
-            class="option"
-          >
-            {{ option.name }}
-            <span v-if="option.extra_price > 0" class="extra">+{{ option.extra_price }}</span>
-          </el-checkbox>
-        </el-checkbox-group>
+        <!-- 多选组：勾上 = 1 份；选中的项右边多一个数量控件，加料可以加多份 -->
+        <div v-else class="multi-row">
+          <div v-for="option in group.options" :key="option.id" class="multi-item">
+            <el-checkbox
+              :model-value="countOf(group.id, option.id) > 0"
+              class="option"
+              @update:model-value="(checked: boolean) =>
+                toggleMultiple(group.id, option.id, checked)"
+            >
+              {{ option.name }}
+              <span v-if="option.extra_price > 0" class="extra">+{{ option.extra_price }}</span>
+            </el-checkbox>
+            <span v-if="countOf(group.id, option.id) > 0" class="stepper">
+              <span class="stepper-btn" @click="changeCount(group.id, option.id, -1)">−</span>
+              <span class="stepper-num">{{ countOf(group.id, option.id) }}</span>
+              <span class="stepper-btn" @click="changeCount(group.id, option.id, 1)">＋</span>
+            </span>
+          </div>
+        </div>
       </div>
 
       <div class="footer-row">
@@ -206,6 +243,53 @@ function handleClose() {
    选项多的时候自然换行，比一列到底省地方 */
 .option {
   margin: 0 16px 6px 0;
+}
+
+.multi-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 一个选项 + 它的数量控件算一组，换行时不会被拆开 */
+.multi-item {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 16px 6px 0;
+}
+
+.multi-item .option {
+  margin-right: 0;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.stepper-btn {
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  font-size: 14px;
+  color: #1f1f1f;
+  border: 1px solid #d9d9d9;
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+}
+
+.stepper-btn:hover {
+  border-color: #1f1f1f;
+}
+
+.stepper-num {
+  min-width: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: #1f1f1f;
 }
 
 .extra {

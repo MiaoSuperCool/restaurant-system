@@ -147,18 +147,31 @@
               <text class="group-name">{{ group.name }}</text>
               <text v-if="group.is_required" class="required">必选</text>
               <text class="group-type">{{ group.selection_type_label }}</text>
+              <!-- 加料能加多份，但光看界面看不出「点几下 = 几份」，提示一句 -->
+              <text v-if="group.selection_type === 'multiple'" class="group-hint">
+                连点可加多份
+              </text>
             </view>
             <view class="option-row">
-              <text
+              <view
                 v-for="option in group.options"
                 :key="option.id"
                 class="option"
-                :class="{ active: isChosen(group.id, option.id) }"
-                @tap="toggleOption(group, option.id)"
+                :class="{ active: countOf(group.id, option.id) > 0 }"
               >
-                {{ option.name }}<text v-if="option.extra_price > 0" class="extra">
-                  +{{ option.extra_price }}</text>
-              </text>
+                <!-- 减号只在多选组、且已选中时出现；减到 0 就是取消 -->
+                <text
+                  v-if="group.selection_type === 'multiple' && countOf(group.id, option.id) > 0"
+                  class="opt-btn"
+                  @tap.stop="removeOption(group, option.id)"
+                >−</text>
+                <text class="opt-label" @tap="addOption(group, option.id)">
+                  {{ option.name }}<text v-if="option.extra_price > 0" class="extra">
+                    +{{ option.extra_price }}</text>
+                  <text v-if="countOf(group.id, option.id) > 1" class="opt-count">
+                    ×{{ countOf(group.id, option.id) }}</text>
+                </text>
+              </view>
             </view>
           </view>
         </scroll-view>
@@ -235,52 +248,69 @@ const emptyHint = computed(() => {
 
 const pickingDish = ref<MenuRow | null>(null)
 const pickQuantity = ref(1)
-/** 组 id → 选中的选项 id */
-const picked = reactive<Record<number, number[]>>({})
+/** 组 id → { 选项 id: 份数 }。加料可以加多份（加蛋 ×2） */
+const picked = reactive<Record<number, Record<number, number>>>({})
+
+/** 某个选项选了几份（0 = 没选） */
+function countOf(groupId: number, optionId: number): number {
+  return picked[groupId]?.[optionId] ?? 0
+}
 
 const pickUnitPrice = computed(() => {
   const dish = pickingDish.value
   if (!dish) return 0
   let price = dish.price
   for (const group of dish.option_groups) {
-    const chosen = picked[group.id] || []
     for (const option of group.options) {
-      if (chosen.includes(option.id)) price += option.extra_price
+      price += option.extra_price * countOf(group.id, option.id)
     }
   }
   return price
 })
 
-/** 按规格组的顺序铺平选中的选项 */
+/** 按规格组的顺序铺平选中的选项，带上份数 */
 const pickOptions = computed(() => {
   const dish = pickingDish.value
-  if (!dish) return [] as { id: number; name: string }[]
-  const result: { id: number; name: string }[] = []
+  if (!dish) return [] as { id: number; name: string; count: number }[]
+  const result: { id: number; name: string; count: number }[] = []
   for (const group of dish.option_groups) {
-    const chosen = picked[group.id] || []
     for (const option of group.options) {
-      if (chosen.includes(option.id)) result.push({ id: option.id, name: option.name })
+      const count = countOf(group.id, option.id)
+      if (count > 0) result.push({ id: option.id, name: option.name, count })
     }
   }
   return result
 })
 
-function isChosen(groupId: number, optionId: number): boolean {
-  return (picked[groupId] || []).includes(optionId)
-}
-
-function toggleOption(group: DishOptionGroup, optionId: number) {
-  const chosen = picked[group.id] || []
+/** 加一份。单选组是「换成它」——它只有选中/换一个两种状态，没有份数 */
+function addOption(group: DishOptionGroup, optionId: number) {
   if (group.selection_type === 'single') {
-    // 单选组：点了就换成它
-    picked[group.id] = [optionId]
+    picked[group.id] = { [optionId]: 1 }
     return
   }
-  // 多选组：再点一次取消
-  picked[group.id] = chosen.includes(optionId)
-    ? chosen.filter((id) => id !== optionId)
-    : [...chosen, optionId]
+  const counts = picked[group.id] || (picked[group.id] = {})
+  counts[optionId] = (counts[optionId] ?? 0) + 1
 }
+
+/** 减一份，减到 0 就是取消 */
+function removeOption(group: DishOptionGroup, optionId: number) {
+  const counts = picked[group.id]
+  if (!counts) return
+  const next = (counts[optionId] ?? 0) - 1
+  if (next <= 0) delete counts[optionId]
+  else counts[optionId] = next
+}
+
+/** 提交给后端的 option_ids：同一个 id 重复几次就是几份 */
+const pickOptionIds = computed(() =>
+  pickOptions.value.flatMap((option) => Array(option.count).fill(option.id))
+)
+
+const pickOptionsText = computed(() =>
+  pickOptions.value
+    .map((option) => (option.count > 1 ? `${option.name}×${option.count}` : option.name))
+    .join(',')
+)
 
 function changePickQuantity(delta: number) {
   const next = pickQuantity.value + delta
@@ -304,7 +334,9 @@ function pickDish(dish: MenuRow) {
   for (const key of Object.keys(picked)) delete picked[Number(key)]
   // 必选组默认选第一个——顾客少点一下，多数人也是选标准份
   for (const group of dish.option_groups) {
-    picked[group.id] = group.is_required && group.options.length ? [group.options[0].id] : []
+    picked[group.id] = group.is_required && group.options.length
+      ? { [group.options[0].id]: 1 }
+      : {}
   }
 }
 
@@ -314,7 +346,8 @@ function confirmPick() {
 
   // 和后端同样的校验，错了当场提示，别等提交才吃 400
   for (const group of dish.option_groups) {
-    if (group.is_required && (picked[group.id] || []).length === 0) {
+    const anyPicked = group.options.some((option) => countOf(group.id, option.id) > 0)
+    if (group.is_required && !anyPicked) {
       uni.showToast({ title: `请选择「${group.name}」`, icon: 'none' })
       return
     }
@@ -325,8 +358,8 @@ function confirmPick() {
     name: dish.name,
     unit_price: pickUnitPrice.value,
     quantity: pickQuantity.value,
-    option_ids: pickOptions.value.map((option) => option.id),
-    options_text: pickOptions.value.map((option) => option.name).join(','),
+    option_ids: pickOptionIds.value,
+    options_text: pickOptionsText.value,
   })
   pickingDish.value = null
   uni.showToast({ title: '已加入', icon: 'none', duration: 800 })
@@ -820,13 +853,22 @@ onLoad((query) => {
   margin-left: 12rpx;
 }
 
+/* 「连点可加多份」：比「多选」再淡一点，别抢主信息的注意力 */
+.group-hint {
+  font-size: 22rpx;
+  color: #c0c0c0;
+  margin-left: 16rpx;
+}
+
 .option-row {
   display: flex;
   flex-wrap: wrap;
 }
 
 .option {
-  padding: 14rpx 32rpx;
+  display: flex;
+  align-items: center;
+  padding: 14rpx 24rpx;
   margin: 0 16rpx 16rpx 0;
   border-radius: 32rpx;
   font-size: 26rpx;
@@ -837,6 +879,22 @@ onLoad((query) => {
 .option.active {
   background: #1f1f1f;
   color: #fff;
+}
+
+/* 加减号：多选组选中后才出现 */
+.opt-btn {
+  padding: 0 14rpx;
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+.opt-label {
+  padding: 0 2rpx;
+}
+
+.opt-count {
+  margin-left: 8rpx;
+  font-size: 24rpx;
 }
 
 .extra {

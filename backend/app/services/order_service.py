@@ -141,6 +141,11 @@ class OrderService:
         **价格全部从数据库现算**：本店实际价（门店覆盖价或基础价）+ 各选项加价。
         前端传来的任何金额都不采信。
 
+        **`option_ids` 里重复出现 = 要几份**：`[5, 5]` 就是「加蛋 ×2」。
+        `option_ids` 本来就是数组，这样请求结构不用多一层嵌套，购物车的
+        选中列表也天然支持。单个选项最终落成**一条** OrderItemOption，
+        `quantity` 记份数——不是落两条重复的行，那样统计和展示都要自己去合并。
+
         公开方法而不是私有的：演示数据脚本（app/demo.py）也要用它造订单，
         不能另写一份算价逻辑——两处各算各的，迟早会漂移。
         """
@@ -155,32 +160,39 @@ class OrderService:
         if unknown:
             raise BusinessError(f'「{dish.name}」没有这些规格选项（option_id={unknown}）')
 
-        # 按组归集，然后按组校验规则
+        # 按组归集：group_id -> {option_id: 份数}，dict 保序（按第一次出现的先后）
         picked_by_group = {}
         for option_id in option_ids:
-            group, option = option_map[option_id]
-            picked_by_group.setdefault(group.id, []).append(option)
+            group, _option = option_map[option_id]
+            counts = picked_by_group.setdefault(group.id, {})
+            counts[option_id] = counts.get(option_id, 0) + 1
 
+        # 必选选了吗、单选有没有多选或要了两份
         for group in groups:
-            picked = picked_by_group.get(group.id, [])
-            if group.is_required and not picked:
+            counts = picked_by_group.get(group.id, {})
+            if group.is_required and not counts:
                 raise BusinessError(f'「{dish.name}」的「{group.name}」是必选项，请先选')
-            if group.selection_type == DishOptionGroup.TYPE_SINGLE and len(picked) > 1:
+            if group.selection_type == DishOptionGroup.TYPE_SINGLE and (
+                    len(counts) > 1 or any(n > 1 for n in counts.values())):
+                # 同一个选项传两次也算「选了多个」——单选组里要求两份没有意义
                 raise BusinessError(f'「{dish.name}」的「{group.name}」只能选一个')
 
         # 按规格组的顺序铺平，选项快照读起来和菜单上的顺序一致
-        ordered = [
-            (group, option)
-            for group in groups
-            for option in picked_by_group.get(group.id, [])
-        ]
-        options_text = ','.join(option.name for _group, option in ordered)
+        ordered = []                       # [(group, option, 份数), ...]
+        for group in groups:
+            for option_id, count in picked_by_group.get(group.id, {}).items():
+                ordered.append((group, option_map[option_id][1], count))
 
-        # 单价 = 本店实际价 + 规格加价合计
+        options_text = ','.join(
+            f'{option.name}×{count}' if count > 1 else option.name
+            for _group, option, count in ordered
+        )
+
+        # 单价 = 本店实际价 + 规格加价合计（加价是单价，要乘份数）
         unit_price = override.effective_price if override else dish.base_price
         unit_price = Decimal(unit_price)
-        for _group, option in ordered:
-            unit_price += Decimal(option.extra_price)
+        for _group, option, count in ordered:
+            unit_price += Decimal(option.extra_price) * count
 
         item = OrderItem(
             dish_id=dish.id,
@@ -195,15 +207,18 @@ class OrderService:
                 dish_option_id=option.id,
                 dish_option_group_name=group.name,
                 dish_option_name=option.name,
-                extra_price=option.extra_price,
+                extra_price=option.extra_price,     # 单价快照
+                quantity=count,
             )
-            for group, option in ordered
+            for group, option, count in ordered
         ]
         return item
 
     @staticmethod
     def build_order(store, items_data, source, remark='', operator=None, member_id=None):
         """下单的核心：校验菜品、算价、生成单号
+        它和create_order的关系是“造“和“存”，这里最后返回一个order对象，但是它不 db.session.add()，也不 commit()
+        它调用上面的build_order_item，生成一整单
 
         **内部代点单和顾客自助下单都走这里。** 算价逻辑只能有一份——
         两条路径各算各的，迟早会算出两个数（而这是钱的事）。

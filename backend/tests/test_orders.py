@@ -110,6 +110,53 @@ def test_option_validation(client, admin_staff, login):
     assert '规格选项' in resp.get_json()['message']
 
 
+def test_same_option_twice_means_two_portions(client, admin_staff, login):
+    """同一个加料传两次 = 加两份
+
+    `option_ids` 本来就是数组，重复出现就是份数——请求结构不用再加一层嵌套，
+    购物车的选中列表也天然支持。
+
+    落库是**一条**记录带 `quantity=2`，不是两条重复的行：两条行的话，
+    「这份面加了什么」和「加蛋卖了多少份」都得让调用方自己去合并。
+    """
+    login('admin', 'Admin123!')
+    store = _store(client)
+    dish, opt = _dish_with_options(client)
+
+    resp = _order(client, store['id'], [
+        {'dish_id': dish['id'], 'quantity': 1,
+         'option_ids': [opt['medium'], opt['egg'], opt['egg']]},
+    ])
+    assert resp.status_code == 201
+    item = resp.get_json()['data']['items'][0]
+
+    # 15（基础价）+ 0（中份）+ 2×2（两份加蛋）= 19
+    assert item['unit_price'] == 19.0
+    assert item['options_text'] == '中份,加蛋×2'
+
+    eggs = [o for o in item['options'] if o['dish_option_id'] == opt['egg']]
+    assert len(eggs) == 1, '加蛋只该落一条记录'
+    assert eggs[0]['quantity'] == 2
+    assert eggs[0]['extra_price'] == 2.0, 'extra_price 是单价，不是小计'
+
+
+def test_single_group_rejects_two_portions(client, admin_staff, login):
+    """单选组里同一个选项传两次也算「选了多个」
+
+    「中份 ×2」到底是什么意思？要两碗面应该改菜的数量，不是改份量的份数。
+    """
+    login('admin', 'Admin123!')
+    store = _store(client)
+    dish, opt = _dish_with_options(client)
+
+    resp = _order(client, store['id'], [
+        {'dish_id': dish['id'], 'quantity': 1,
+         'option_ids': [opt['medium'], opt['medium']]},
+    ])
+    assert resp.status_code == 400
+    assert '只能选一个' in resp.get_json()['message']
+
+
 def test_unavailable_dish_cannot_be_ordered(client, admin_staff, login):
     """本店下架 / 全公司停售的菜都点不了"""
     login('admin', 'Admin123!')

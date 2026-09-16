@@ -237,7 +237,11 @@ class OrderItemOption(BaseModel):
     # 快照
     dish_option_group_name = db.Column(db.String(32), nullable=False, default='')
     dish_option_name = db.Column(db.String(32), nullable=False, default='')
+    # extra_price 是**单价**，不是小计——加蛋加 2 份就是 quantity=2、extra_price=2，
+    # 小计要靠 extra_price * quantity 现算。这样改份数时单价快照还是准的
     extra_price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    # 份数：加料可以加多份（加蛋 ×2）。单选组只能是 1（选两个不是"两份"，是"选错了"）
+    quantity = db.Column(db.Integer, nullable=False, default=1)
 
     def to_dict(self):
         return {
@@ -246,4 +250,5 @@ class OrderItemOption(BaseModel):
             'group_name': self.dish_option_group_name,
             'name': self.dish_option_name,
             'extra_price': float(self.extra_price),
+            'quantity': self.quantity,
         }
