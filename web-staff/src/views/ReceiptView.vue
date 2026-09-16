@@ -28,6 +28,16 @@ function handlePrint() {
   window.print()
 }
 
+/** 返回订单页
+ *
+ * 不能用 `router.back()`：小票是「订单」页点按钮用 `window.open` **新开标签页**
+ * 打开的，那个标签页的 history 里只有小票自己——`back()` 点了不会有任何反应。
+ * 所以直接跳订单页，行为可预期（哪怕用户是直接输网址进来的也一样）。
+ */
+function goBack() {
+  router.push('/orders')
+}
+
 onMounted(loadOrder)
 </script>
 
@@ -35,7 +45,7 @@ onMounted(loadOrder)
   <div class="receipt-page">
     <!-- 屏幕上的工具条。打印时会被 @media print 隐藏 -->
     <div class="toolbar no-print">
-      <el-button @click="router.back()">返回</el-button>
+      <el-button @click="goBack">返回订单</el-button>
       <el-button type="primary" :disabled="!order" @click="handlePrint">打印小票</el-button>
       <span class="tip">打印宽度按 80mm 热敏纸设置</span>
     </div>
