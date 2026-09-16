@@ -272,6 +272,15 @@ class RefundService:
             if order.member_id:
                 PointsService.revoke(order.member_id, refund.amount, order=order)
 
+                # 还要把当初**抵扣用掉的**积分按比例还回去——全额退时正好全部还原。
+                # 比例的分母是实付金额（`payable_amount` 是抵扣之后的值，不会变），
+                # 所以分几次退加起来正好等于当初用的那些分
+                if order.points_used and order.payable_amount > 0:
+                    ratio = Decimal(refund.amount) / Decimal(order.payable_amount)
+                    back = int(Decimal(order.points_used) * ratio)
+                    if back > 0:
+                        PointsService.restore(order.member_id, back, order=order)
+
             # 退到储值：钱不是「给出去」，是退回顾客自己的账户。
             # 必须挂在那笔储值消费流水上——退回的金额要按原消费的比例
             # 拆成本金和赠送（余额支付扣的时候就是这么扣的）

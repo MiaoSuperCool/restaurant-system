@@ -53,6 +53,16 @@ class PointsService:
         """这些积分能抵多少钱"""
         return (Decimal(points) / REDEEM_RATE).quantize(CENT)
 
+    @staticmethod
+    def max_points_for_amount(amount):
+        """这么多钱的订单，最多能用多少积分抵
+
+        **不能抵成负数**（那等于倒找钱给顾客），所以抵扣上限就是订单金额。
+        这个换算和「返多少」用的是**不同的比例**（返是 `EARN_RATE`、抵是
+        `REDEEM_RATE`），所以得单独一个函数，别拿 `points_for_amount` 凑。
+        """
+        return int(Decimal(amount) * REDEEM_RATE)
+
     # ---------- 查 ----------
 
     @staticmethod
@@ -223,6 +233,31 @@ class PointsService:
         if actual < delta:
             txn.remark = f'{remark}（应扣 {delta} 分，账上只有 {points.balance + actual} 分，扣到 0 为止）'
         return txn
+
+    @staticmethod
+    def restore(member_id, points, order=None, remark=''):
+        """退款时把当初**抵扣用掉**的积分还回去
+
+        和 `revoke` 是一对，方向相反：
+
+            revoke    退款 → 扣掉「消费时返的」（那笔消费不算了）
+            restore   退款 → 还回「抵扣时用的」（那笔优惠也不算了）
+
+        全额退款时正好全部还原：当初抵了多少分，就还多少分。
+        参数是**分**不是金额——因为 `Order.points_used` 记的就是分，
+        还的时候要精确对上，不能再过一道换算。
+        """
+        points = int(points)
+        if points <= 0:
+            return None
+
+        if not remark:
+            remark = f'订单 {order.order_no} 退款返还抵扣积分' if order else '退款返还抵扣积分'
+
+        account = PointsService._lock(member_id)
+        return PointsService._record(
+            account, PointsTxn.TYPE_RESTORE, points, order=order, remark=remark,
+        )
 
     @staticmethod
     def migrate(member_id, balance, legacy_no, remark=''):

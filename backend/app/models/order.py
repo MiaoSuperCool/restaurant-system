@@ -92,7 +92,16 @@ class Order(BaseModel):
     # ---------- 金额（一律 Decimal，不用浮点）----------
     total_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)      # 原价合计
     discount_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)   # 优惠合计
-    payable_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)    # 应付 = 原价 - 优惠
+
+    # 积分抵扣。**用了多少分、抵了多少钱，两个都存**：
+    #   - 换算比例将来会变（现在是 100 分抵 1 元），历史订单要还原当时的抵扣额
+    #   - 退款时要把用掉的积分数原样还回去，得知道当时用了多少
+    # 只存一个的话，另一个就得靠当时的比例反算——比例一变就对不上了
+    points_used = db.Column(db.Integer, nullable=False, default=0)
+    points_discount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+
+    # 应付 = 原价 - 优惠 - 积分抵扣
+    payable_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     paid_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)       # 已收（可能分多笔）
     # 已退。有了它才答得出「这单还能退多少」——退款要校验的可退金额
     # = paid_amount − refunded_amount，两个数都得留着
@@ -153,6 +162,8 @@ class Order(BaseModel):
             'status_label': self.STATUS_LABELS.get(self.status, self.status),
             'total_amount': float(self.total_amount),
             'discount_amount': float(self.discount_amount),
+            'points_used': self.points_used,
+            'points_discount': float(self.points_discount),
             'payable_amount': float(self.payable_amount),
             'paid_amount': float(self.paid_amount),
             'refunded_amount': float(self.refunded_amount),

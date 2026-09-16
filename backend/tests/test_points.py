@@ -218,14 +218,16 @@ def _dish(client, name='牛肉面', base_price='15.00'):
     }).get_json()['data']
 
 
-def _order(client, store_id, dish_id, member_id=None, quantity=1):
+def _order(client, store_id, dish_id, member_id=None, quantity=1, points_to_use=0):
     payload = {
         'store_id': store_id,
         'items': [{'dish_id': dish_id, 'quantity': quantity, 'option_ids': []}],
     }
     if member_id:
         payload['member_id'] = member_id
-    return client.post('/api/orders', json=payload).get_json()['data']
+    if points_to_use:
+        payload['points_to_use'] = points_to_use
+    return client.post('/api/orders', json=payload)
 
 
 def _collect(client, order_id, method, amount):
@@ -242,7 +244,7 @@ def test_collecting_earns_points(client, admin_staff, login):
     store, dish = _store(client), _dish(client)          # 牛肉面 ¥15
     member = _member(client)
 
-    order = _order(client, store['id'], dish['id'], member['id'])
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
     # 下单时还没返——订单建了不算数
     assert _points(client, member['id'])['balance'] == 0
 
@@ -255,7 +257,7 @@ def test_partial_payment_earns_proportionally(client, admin_staff, login):
     login('admin', 'Admin123!')
     store, dish = _store(client), _dish(client)
     member = _member(client)
-    order = _order(client, store['id'], dish['id'], member['id'])
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
 
     _collect(client, order['id'], 'cash', 10)
     assert _points(client, member['id'])['balance'] == 10
@@ -268,7 +270,7 @@ def test_scattered_order_earns_nothing(client, admin_staff, login):
     """散客单不返——返给谁？"""
     login('admin', 'Admin123!')
     store, dish = _store(client), _dish(client)
-    order = _order(client, store['id'], dish['id'])      # 没挂会员
+    order = _order(client, store['id'], dish['id']).get_json()['data']      # 没挂会员
 
     assert _collect(client, order['id'], 'cash', 15).status_code == 201
 
@@ -280,7 +282,7 @@ def test_disabled_member_earns_nothing(app, client, admin_staff, login):
     login('admin', 'Admin123!')
     store, dish = _store(client), _dish(client)
     member = _member(client)
-    order = _order(client, store['id'], dish['id'], member['id'])
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
 
     with app.app_context():
         db.session.get(Member, member['id']).is_active = False
@@ -295,7 +297,7 @@ def test_refund_takes_points_back(client, admin_staff, make_staff, login):
     login('admin', 'Admin123!')
     store, dish = _store(client), _dish(client)
     member = _member(client)
-    order = _order(client, store['id'], dish['id'], member['id'])
+    order = _order(client, store['id'], dish['id'], member['id']).get_json()['data']
 
     _collect(client, order['id'], 'cash', 15)
     assert _points(client, member['id'])['balance'] == 15
@@ -353,3 +355,132 @@ def test_revoke_on_empty_account_writes_nothing(as_admin, client, admin_staff, l
 
     assert txn is None
     assert count == 0
+
+
+# ---------- 下单时抵扣 ----------
+
+def test_order_can_pay_with_points(client, admin_staff, login):
+    """下单时用积分抵一部分：应付 = 原价 − 抵扣
+
+    牛肉面 ¥15，用 300 分（抵 ¥3）→ 应付 ¥12。订单上**用了多少分、抵了多少钱**
+    都记着——两个都得存，比例将来变了历史订单才还原得出来。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)          # 牛肉面 ¥15
+    member = _member(client)
+    _adjust(client, member['id'], 500)
+
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   points_to_use=300).get_json()['data']
+
+    assert order['total_amount'] == 15.0
+    assert order['points_used'] == 300
+    assert order['points_discount'] == 3.0
+    assert order['payable_amount'] == 12.0
+
+    assert _points(client, member['id'])['balance'] == 200
+
+
+def test_discount_is_capped_at_the_order_amount(client, admin_staff, login):
+    """抵扣上限就是订单金额——**不能抵成负数**（那等于倒找钱）
+
+    顾客说「我有 5000 分，能抵多少抵多少」是很自然的，按上限截断就行，
+    没必要让他先去算。这里 5000 分够抵 ¥50，但订单只有 ¥15。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    _adjust(client, member['id'], 5000)
+
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   points_to_use=5000).get_json()['data']
+
+    assert order['points_used'] == 1500        # ¥15 最多用 1500 分
+    assert order['payable_amount'] == 0.0      # 抵到 0 为止
+    assert _points(client, member['id'])['balance'] == 3500
+
+
+def test_cannot_use_more_points_than_you_have(client, admin_staff, login):
+    """积分不够就拒绝——报清楚差多少，别让人自己猜"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    _adjust(client, member['id'], 50)
+
+    resp = _order(client, store['id'], dish['id'], member['id'], points_to_use=300)
+    assert resp.status_code == 400
+    assert '积分不够' in resp.get_json()['message']
+    # 一分没动
+    assert _points(client, member['id'])['balance'] == 50
+
+
+def test_scattered_order_cannot_use_points(client, admin_staff, login):
+    """散客单用不了积分——从谁的账上扣？"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+
+    resp = _order(client, store['id'], dish['id'], points_to_use=300)
+    assert resp.status_code == 400
+    assert '没关联会员' in resp.get_json()['message']
+
+
+def test_full_refund_gives_the_points_back(client, admin_staff, make_staff, login):
+    """全额退款要把抵扣用的积分**原样还回来**——那笔优惠等于没发生"""
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    _adjust(client, member['id'], 500)
+
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   points_to_use=300).get_json()['data']
+    assert _points(client, member['id'])['balance'] == 200
+
+    # 得先收钱——退款退的是「已收的钱」，没收过的单退不了
+    assert _collect(client, order['id'], 'cash', 12).status_code == 201
+    assert _points(client, member['id'])['balance'] == 212    # 收款又返了 12 分
+    client.post('/api/auth/logout')
+
+    make_staff('shouyin', 'cashier', store_id=store['id'])
+    login('shouyin', 'Passw0rd!')
+    refund = client.post(f'/api/refunds/orders/{order["id"]}',
+                         json={'amount': '12.00', 'reason': '点错了'}).get_json()['data']
+    client.post('/api/auth/logout')
+
+    login('admin', 'Admin123!')
+    client.post(f'/api/refunds/{refund["id"]}/approve', json={'remark': '同意'})
+    client.post(f'/api/refunds/{refund["id"]}/settle', json={'method': 'cash'})
+
+    # 收款返的 12 分被扣回（那笔消费不算了），抵扣用的 300 分还回来
+    # 212 − 12 + 300 = 500，正好回到抵扣前的数
+    assert _points(client, member['id'])['balance'] == 500
+
+
+def test_partial_refund_gives_points_back_proportionally(client, admin_staff,
+                                                         make_staff, login):
+    """部分退款按比例还：抵了 300 分、实付 12 元，退 6 元就还 150 分
+
+    比例的分母是**实付金额**（`payable_amount` 是抵扣之后的值，不会变），
+    所以分几次退加起来正好等于当初用的那些分。
+    """
+    login('admin', 'Admin123!')
+    store, dish = _store(client), _dish(client)
+    member = _member(client)
+    _adjust(client, member['id'], 500)
+
+    order = _order(client, store['id'], dish['id'], member['id'],
+                   points_to_use=300).get_json()['data']
+    _collect(client, order['id'], 'cash', 12)                 # 212
+    client.post('/api/auth/logout')
+
+    make_staff('shouyin', 'cashier', store_id=store['id'])
+    login('shouyin', 'Passw0rd!')
+    refund = client.post(f'/api/refunds/orders/{order["id"]}',
+                         json={'amount': '6.00', 'reason': '退一半'}).get_json()['data']
+    client.post('/api/auth/logout')
+
+    login('admin', 'Admin123!')
+    client.post(f'/api/refunds/{refund["id"]}/approve', json={'remark': '同意'})
+    client.post(f'/api/refunds/{refund["id"]}/settle', json={'method': 'cash'})
+
+    # 212 − 6（扣回一半的返分）+ 150（还一半的抵扣分）= 356
+    assert _points(client, member['id'])['balance'] == 356

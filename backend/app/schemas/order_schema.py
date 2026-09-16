@@ -45,7 +45,12 @@ class OrderCreateSchema(Schema):
     )
     member_id = fields.Integer(
         allow_none=True,
-        metadata={'description': '会员 id；**储值支付要靠它**。不传就是散客单'},
+        metadata={'description': '会员 id；**储值支付和积分抵扣都要靠它**。不传就是散客单'},
+    )
+    points_to_use = fields.Integer(
+        load_default=0,
+        validate=validate.Range(min=0),
+        metadata={'description': '用多少积分抵扣；0 = 不用。不够或超过订单金额都会被拒'},
     )
     items = fields.List(
         fields.Nested(OrderItemCreateSchema),

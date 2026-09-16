@@ -298,6 +298,11 @@ class OrderService:
                 data.get('remark', ''), operator, member_id,
             )
             db.session.add(order)
+
+            # 积分抵扣放在 `build_order` **之后**：那是个纯构造（不碰数据库），
+            # 而抵扣要真的扣积分、还要改应付金额
+            OrderService._apply_points_discount(order, data.get('points_to_use') or 0)
+
             db.session.commit()
 
             AuditService.log(
@@ -391,6 +396,32 @@ class OrderService:
         return OrderService._transition(order_id, Order.STATUS_CANCELLED, 'CANCEL_ORDER')
 
     # ---------- 收款 ----------
+
+    @staticmethod
+    def _apply_points_discount(order, points_to_use):
+        """用积分抵扣这单的一部分
+
+        **抵扣上限就是订单金额**——不能抵成负数（那等于倒找钱给顾客）。
+        顾客传多了就按上限截断，而不是报错：他说"我有 5000 分，能抵多少抵多少"
+        是很自然的事，没必要让他先去算。
+
+        （积分不够会由 `PointsService.redeem` 拦下来，报清楚差多少。）
+        """
+        if points_to_use <= 0:
+            return
+
+        if order.member_id is None:
+            raise BusinessError('这单没关联会员，用不了积分')
+
+        use = min(int(points_to_use),
+                  PointsService.max_points_for_amount(order.payable_amount))
+        if use <= 0:
+            raise BusinessError('这单金额太小，抵不了积分')
+
+        discount = PointsService.redeem(order.member_id, use, order=order)
+        order.points_used = use
+        order.points_discount = discount
+        order.payable_amount = order.payable_amount - discount
 
     @staticmethod
     def _assert_can_use_balance(order):
