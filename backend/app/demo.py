@@ -112,6 +112,17 @@ STAFF = [
     ('houcu', '周后厨', 'kitchen', 'S001', 'full_time', False),
 ]
 
+# 菜品配图：路径相对前端的 public/（web-staff 直接拿它当卡片背景）
+#
+# 单独一张表而不是塞进 DISHES 的元组里——那样每个分类都要跟着改结构，
+# 而配图本来就只给个别菜用（其余菜品走默认的纯色卡片）
+#
+# 原图要先跑 `scripts/optimize_dish_images.py` 压成 WebP（缩到 800px、59KB 左右），
+# 别把几 MB 的原图直接丢进 public/
+DISH_IMAGES = {
+    '红烧牛肉面': '/dishes/beef-noodle.webp',
+}
+
 MEMBERS = [
     # (手机号, 昵称, 充值本金, 赠送, 积分)
     # 三个各演示一种状态，演示「会员」页时一眼能看出区别
@@ -346,6 +357,7 @@ def seed_demo(reset=False):
             dish = Dish(
                 category=categories_by_name[cat_name], name=name,
                 base_price=Decimal(price), description=desc, sort_order=order_index,
+                image=DISH_IMAGES.get(name, ''),
             )
             for g_index, (g_name, g_type, required, options) in enumerate(groups):
                 group = DishOptionGroup(
@@ -359,6 +371,10 @@ def seed_demo(reset=False):
                 dish.option_groups.append(group)
             db.session.add(dish)
             stats['dishes'] += 1
+        elif not dish.image and name in DISH_IMAGES:
+            # 已经建过的菜补上配图——种子数据的语义是「已存在的不重建、缺的补上」，
+            # 配图是后加的，老环境跑一遍就能有
+            dish.image = DISH_IMAGES[name]
         dishes_by_name[name] = dish
     db.session.flush()
 

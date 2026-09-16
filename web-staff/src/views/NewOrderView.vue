@@ -238,6 +238,20 @@ async function handleClearCart() {
   clearCart()
 }
 
+/**
+ * 菜品照片通过 CSS 变量传给卡片的伪元素
+ *
+ * **为什么绕一层变量**：`filter: blur()` 作用于整个元素——直接给 `.dish-card`
+ * 加背景图再 blur 的话，卡片上的文字也会被糊掉。所以背景得是单独一层
+ * （`::before`），而伪元素拿不到 Vue 的绑定，只能用变量传进去。
+ *
+ * 没图就返回 undefined，卡片走原来的样子。
+ */
+function dishPhotoVars(dish: StoreMenuRow): Record<string, string> | undefined {
+  if (!dish.image) return undefined
+  return { '--dish-photo': `url(${dish.image})` }
+}
+
 onMounted(async () => {
   await loadStores()
   loadMenu()
@@ -303,6 +317,8 @@ onMounted(async () => {
             v-for="dish in visibleDishes"
             :key="dish.dish_id"
             class="dish-card"
+            :class="{ 'has-photo': !!dish.image }"
+            :style="dishPhotoVars(dish)"
             @click="pickDish(dish)"
           >
             <div class="dish-name">{{ dish.name }}</div>
@@ -549,11 +565,41 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   min-height: 104px;
+  /* 背景图那层要裁在圆角里 */
+  position: relative;
+  overflow: hidden;
 }
 
 .dish-card:hover {
   border-color: #1f1f1f;
   background: #fafafa;
+}
+
+/* 菜品照片作背景：模糊 + 压淡，让它当氛围而不是抢戏
+ *
+ * 单独一层伪元素是必须的——`filter: blur()` 作用于**整个元素**，直接加在
+ * `.dish-card` 上的话，菜名和价格也会被糊掉。
+ * `inset: -8px` 往外扩一圈：blur 会让边缘透出底色，扩出去就看不到了。
+ * 图片地址由 Vue 通过 `--dish-photo` 传进来（伪元素拿不到绑定）。
+ */
+.dish-card.has-photo::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  background-image: var(--dish-photo);
+  background-size: cover;
+  background-position: center;
+  /* 模糊要留着（是「氛围」不是「照片」），但别糊到看不出是什么菜——
+     blur 越小越能认出形状，靠 opacity 压住彩度 */
+  filter: blur(3px) saturate(0.9);
+  opacity: 0.45;
+  z-index: 0;
+}
+
+/* 卡片内容压在背景那层上面 */
+.dish-card.has-photo > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dish-name {
