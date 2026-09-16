@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createMember, getBalanceTxns, getMembers, rechargeBalance } from '@/api/members'
-import type { BalanceTxn, Member } from '@/api/types'
+import {
+  adjustPoints,
+  createMember,
+  getBalanceTxns,
+  getMembers,
+  getPointsTxns,
+  rechargeBalance,
+} from '@/api/members'
+import type { BalanceTxn, Member, PointsTxn } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { formatPrice, formatTime } from '@/utils/format'
 
@@ -15,6 +22,8 @@ const authStore = useAuthStore()
 const canManage = computed(() => authStore.hasPermission('member:manage'))
 const canRecharge = computed(() => authStore.hasPermission('member:balance:recharge'))
 const canSeeBalance = computed(() => authStore.hasPermission('member:balance:view'))
+// 改积分比看积分严一档——它是「凭空给人好处」，收银员没有这个码
+const canAdjustPoints = computed(() => authStore.hasPermission('points:adjust'))
 
 const members = ref<Member[]>([])
 const total = ref(0)
@@ -115,24 +124,75 @@ async function handleRecharge() {
   }
 }
 
-// ---------- 流水 ----------
+// ---------- 资产明细（储值 + 积分两个页签） ----------
 
-const txnVisible = ref(false)
-const txns = ref<BalanceTxn[]>([])
-const txnLoading = ref(false)
-const txnMember = ref<Member | null>(null)
+const assetsVisible = ref(false)
+const assetsTab = ref<'balance' | 'points'>('balance')
+const assetsMember = ref<Member | null>(null)
+const balanceTxns = ref<BalanceTxn[]>([])
+const pointsTxns = ref<PointsTxn[]>([])
+const assetsLoading = ref(false)
 
-async function openTxns(row: Member) {
-  txnMember.value = row
-  txnVisible.value = true
-  txnLoading.value = true
+async function openAssets(row: Member) {
+  assetsMember.value = row
+  assetsTab.value = 'balance'
+  balanceTxns.value = []
+  pointsTxns.value = []
+  assetsVisible.value = true
+
+  assetsLoading.value = true
   try {
-    const data = await getBalanceTxns(row.id)
-    txns.value = data.txns
+    // 一起拉——两个页签收银员多半都要看（「他还有多少钱」和「多少分」）
+    const [balance, points] = await Promise.all([
+      getBalanceTxns(row.id),
+      getPointsTxns(row.id),
+    ])
+    balanceTxns.value = balance.txns
+    pointsTxns.value = points.txns
   } catch {
-    txns.value = []
+    // 拦截器已提示
   } finally {
-    txnLoading.value = false
+    assetsLoading.value = false
+  }
+}
+
+// ---------- 积分调整 ----------
+
+const pointsAdjustVisible = ref(false)
+const pointsAdjusting = ref(false)
+const pointsMember = ref<Member | null>(null)
+const pointsForm = ref({ delta: 0, remark: '' })
+
+function openPointsAdjust(row: Member) {
+  pointsMember.value = row
+  pointsForm.value = { delta: 0, remark: '' }
+  pointsAdjustVisible.value = true
+}
+
+async function handlePointsAdjust() {
+  if (!pointsMember.value) return
+  if (!pointsForm.value.delta) {
+    ElMessage.warning('调整数量不能是 0')
+    return
+  }
+  if (!pointsForm.value.remark.trim()) {
+    ElMessage.warning('必须写清楚为什么调整')
+    return
+  }
+
+  pointsAdjusting.value = true
+  try {
+    await adjustPoints(pointsMember.value.id, {
+      delta: pointsForm.value.delta,
+      remark: pointsForm.value.remark.trim(),
+    })
+    ElMessage.success('已调整')
+    pointsAdjustVisible.value = false
+    loadMembers()
+  } catch {
+    // 拦截器已提示（扣成负数等）
+  } finally {
+    pointsAdjusting.value = false
   }
 }
 
@@ -171,8 +231,14 @@ onMounted(loadMembers)
             <span v-else class="muted">—（微信会员）</span>
           </template>
         </el-table-column>
-        <el-table-column prop="nickname" label="昵称" min-width="120" />
-        <el-table-column v-if="canSeeBalance" label="储值余额" width="200">
+        <el-table-column label="昵称" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.nickname || '—' }}</span>
+            <span class="balance-detail">{{ formatTime(row.created_at) }} 建档</span>
+          </template>
+        </el-table-column>
+        <!-- 储值和积分挤在一列：两个都是「他账上有什么」，分两列会撑破 892px 的内容区 -->
+        <el-table-column v-if="canSeeBalance" label="储值 / 积分" width="220">
           <template #default="{ row }">
             <template v-if="row.balance">
               <span class="balance-total">{{ formatPrice(row.balance.total) }}</span>
@@ -181,7 +247,10 @@ onMounted(loadMembers)
                 · 赠送 {{ formatPrice(row.balance.bonus) }}
               </span>
             </template>
-            <span v-else class="muted">—</span>
+            <span v-else class="muted">储值 —</span>
+            <span v-if="row.points" class="points-line">
+              积分 {{ row.points.balance }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -192,10 +261,7 @@ onMounted(loadMembers)
             <el-tag v-else type="info" size="small" disable-transitions>已停用</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="建档时间" width="150">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="canRecharge"
@@ -205,8 +271,11 @@ onMounted(loadMembers)
             >
               充值
             </el-button>
-            <el-button v-if="canSeeBalance" size="small" link @click="openTxns(row)">
-              流水
+            <el-button v-if="canSeeBalance" size="small" link @click="openAssets(row)">
+              明细
+            </el-button>
+            <el-button v-if="canAdjustPoints" size="small" link @click="openPointsAdjust(row)">
+              积分
             </el-button>
           </template>
         </el-table-column>
@@ -280,37 +349,102 @@ onMounted(loadMembers)
       </template>
     </el-dialog>
 
-    <!-- 流水 -->
-    <el-dialog v-model="txnVisible" title="余额流水" width="620px">
+    <!-- 资产明细：储值和积分两个页签 -->
+    <el-dialog v-model="assetsVisible" title="储值与积分" width="680px">
       <p class="txn-who">
-        {{ txnMember?.nickname || '未命名' }}
-        <span v-if="txnMember?.mobile" class="muted">{{ txnMember.mobile }}</span>
+        {{ assetsMember?.nickname || '未命名' }}
+        <span v-if="assetsMember?.mobile" class="muted">{{ assetsMember.mobile }}</span>
       </p>
-      <el-table v-loading="txnLoading" :data="txns" size="small">
-        <el-table-column label="时间" width="150">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="type_label" label="类型" width="110" />
-        <el-table-column label="变动" width="100">
-          <template #default="{ row }">
-            <span :class="row.amount >= 0 ? 'gain' : 'spend'">
-              {{ row.amount >= 0 ? '+' : '' }}{{ formatPrice(row.amount) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="本金 / 赠送" width="150">
-          <template #default="{ row }">
-            {{ formatPrice(row.principal_delta) }} / {{ formatPrice(row.bonus_delta) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="变动后余额" min-width="130">
-          <template #default="{ row }">{{ formatPrice(row.principal_after + row.bonus_after) }}</template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="120" />
-      </el-table>
-      <p class="txn-hint">
-        储值分<strong>本金</strong>（能退）和<strong>赠送</strong>（不退）。扣款时先扣赠送——先花掉不能退的那部分。
-      </p>
+
+      <el-tabs v-model="assetsTab">
+        <el-tab-pane label="储值流水" name="balance">
+          <el-table v-loading="assetsLoading" :data="balanceTxns" size="small" max-height="300">
+            <el-table-column label="时间" width="140">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column prop="type_label" label="类型" width="100" />
+            <el-table-column label="变动" width="95">
+              <template #default="{ row }">
+                <span :class="row.amount >= 0 ? 'gain' : 'spend'">
+                  {{ row.amount >= 0 ? '+' : '' }}{{ formatPrice(row.amount) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="本金 / 赠送" width="150">
+              <template #default="{ row }">
+                {{ formatPrice(row.principal_delta) }} / {{ formatPrice(row.bonus_delta) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="变动后" min-width="90">
+              <template #default="{ row }">
+                {{ formatPrice(row.principal_after + row.bonus_after) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" min-width="110" />
+          </el-table>
+          <p class="txn-hint">
+            储值分<strong>本金</strong>（能退）和<strong>赠送</strong>（不退）。
+            扣款时先扣赠送——先花掉不能退的那部分，本金留着随时能退。
+          </p>
+        </el-tab-pane>
+
+        <el-tab-pane label="积分流水" name="points">
+          <el-table v-loading="assetsLoading" :data="pointsTxns" size="small" max-height="300">
+            <el-table-column label="时间" width="140">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column prop="type_label" label="类型" width="110" />
+            <el-table-column label="变动" width="90">
+              <template #default="{ row }">
+                <span :class="row.delta >= 0 ? 'gain' : 'spend'">
+                  {{ row.delta >= 0 ? '+' : '' }}{{ row.delta }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="变动后" width="90">
+              <template #default="{ row }">{{ row.after }} 分</template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" min-width="150" />
+          </el-table>
+          <p class="txn-hint">
+            消费 1 元返 1 分、100 分抵 1 元。<strong>积分不分本金/赠送</strong>——
+            它全是送的，没有"顾客真掏的钱"。退款时按退款金额把当初返的扣回来。
+          </p>
+        </el-tab-pane>
+      </el-tabs>
+    </el-dialog>
+
+    <!-- 积分调整 -->
+    <el-dialog v-model="pointsAdjustVisible" title="调整积分" width="420px">
+      <div v-if="pointsMember" class="recharge-body">
+        <p class="recharge-who">
+          {{ pointsMember.nickname || '未命名' }}
+          <span v-if="pointsMember.mobile" class="muted">{{ pointsMember.mobile }}</span>
+        </p>
+        <p class="recharge-now">
+          当前积分 <strong>{{ pointsMember.points?.balance ?? 0 }}</strong> 分
+        </p>
+
+        <el-form label-width="90px">
+          <el-form-item label="调整">
+            <el-input-number v-model="pointsForm.delta" :precision="0" :step="10" />
+            <span class="field-hint">正数是补、负数是扣</span>
+          </el-form-item>
+          <el-form-item label="原因">
+            <el-input v-model="pointsForm.remark" placeholder="如：上错菜补偿" />
+          </el-form-item>
+        </el-form>
+
+        <p class="txn-hint">
+          <strong>必须写原因</strong>——手工加的分不写清楚为什么，事后没人说得清是谁加的。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="pointsAdjustVisible = false">取消</el-button>
+        <el-button type="primary" :loading="pointsAdjusting" @click="handlePointsAdjust">
+          确认调整
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -373,6 +507,16 @@ onMounted(loadMembers)
   display: block;
   font-size: 12px;
   color: #a0a0a0;
+}
+
+/* 积分那一行：和储值同列，用一条细线隔开 */
+.points-line {
+  display: block;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #dcdcdc;
+  font-size: 12px;
+  color: #8a8a8a;
 }
 
 .muted {

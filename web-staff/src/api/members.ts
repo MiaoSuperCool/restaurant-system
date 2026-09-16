@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { BalanceTxn, Member, MemberBalance, Pagination } from './types'
+import type { BalanceTxn, Member, MemberBalance, Pagination, PointsTxn } from './types'
 
 /** 会员列表接口返回的 data */
 export interface MemberListData {
@@ -10,6 +10,12 @@ export interface MemberListData {
 /** 余额流水接口返回的 data */
 export interface BalanceTxnListData {
   txns: BalanceTxn[]
+  pagination: Pagination
+}
+
+/** 积分流水接口返回的 data */
+export interface PointsTxnListData {
+  txns: PointsTxn[]
   pagination: Pagination
 }
 
@@ -34,6 +40,25 @@ export function getBalanceTxns(id: number, params: { page?: number } = {}) {
     method: 'get',
     params,
   })
+}
+
+/** 积分流水（倒序） */
+export function getPointsTxns(id: number, params: { page?: number } = {}) {
+  return request<PointsTxnListData>({
+    url: `/members/${id}/points/txns`,
+    method: 'get',
+    params,
+  })
+}
+
+/**
+ * 手工调整积分（补偿、纠错）
+ *
+ * `delta` 有正负号：正数是补、负数是扣。**必须写原因**——
+ * 手工加的分不写清楚为什么，事后没人说得清是谁加的。
+ */
+export function adjustPoints(id: number, data: { delta: number; remark: string }) {
+  return request<PointsTxn>({ url: `/members/${id}/points/adjust`, method: 'post', data })
 }
 
 /** 建档（员工代客办卡）。手机号和微信 openid 至少填一个 */

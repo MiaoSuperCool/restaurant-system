@@ -355,6 +355,13 @@ export interface MemberBalance {
   total: number
 }
 
+/** 积分账户（对应 points.py 的 Points.to_dict） */
+export interface MemberPoints {
+  member_id: number
+  /** 积分余额（整数，不是钱）。**不拆本金/赠送**——积分全是送的 */
+  balance: number
+}
+
 /** 会员（对应 member.py 的 Member.to_dict） */
 export interface Member {
   id: number
@@ -366,6 +373,24 @@ export interface Member {
   created_at: string | null
   /** 只有详情接口带；没有「查看储值余额」权限时是 null（不是 0，是「看不到」） */
   balance?: MemberBalance | null
+  /** 同上——没权限时是 null */
+  points?: MemberPoints | null
+}
+
+/** 积分流水（对应 points.py 的 PointsTxn.to_dict） */
+export interface PointsTxn {
+  id: number
+  member_id: number
+  type: string
+  type_label: string
+  /** 变动（正负号有意义） */
+  delta: number
+  /** 变动后的积分——对账的锚点 */
+  after: number
+  order_id: number | null
+  legacy_no: string
+  remark: string
+  created_at: string | null
 }
 
 /** 余额流水（对应 balance.py 的 BalanceTxn.to_dict） */
