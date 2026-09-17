@@ -56,6 +56,17 @@ class CouponTemplateCreateSchema(Schema):
         validate=validate.Range(min=1),
         metadata={'description': '发放总量；不传 = 不限量。只约束「发」，不约束「用」'},
     )
+    is_claimable = fields.Boolean(
+        load_default=False,
+        metadata={'description': '挂到券中心让顾客自己领。默认不挂——'
+                                 '券默认是「运营圈了人才发」的东西'},
+    )
+    per_member_limit = fields.Integer(
+        allow_none=True, load_default=None,
+        validate=validate.Range(min=1, error='每人限领至少 1 张'),
+        metadata={'description': '每人能自己领几张；不传 = 不限。'
+                                 '**只管顾客自领**，不约束员工发券'},
+    )
     status = fields.Str(
         load_default=CouponTemplate.STATUS_ACTIVE,
         validate=one_of(CouponTemplate.STATUS_LABELS),
@@ -80,6 +91,8 @@ class CouponTemplateUpdateSchema(Schema):
     valid_from = fields.DateTime(allow_none=True)
     valid_to = fields.DateTime(allow_none=True)
     total_quantity = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    is_claimable = fields.Boolean()
+    per_member_limit = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     status = fields.Str(validate=one_of(CouponTemplate.STATUS_LABELS))
     store_ids = fields.List(fields.Integer())
 

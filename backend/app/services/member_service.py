@@ -2,12 +2,15 @@
 
 余额相关的事在 `BalanceService` 里——**会员是"人"，储值是"他的钱"**，
 分开两个 service，别让一个文件管两件事。
+
+但「把人和他的钱拼成一份数据下发」这件事得有人干，就放这儿（`with_assets`）：
+员工端查会员和顾客端看自己，要的是同一份东西，拼法不该有两份。
 """
 from flask_login import current_user
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
-from backend.app.models import Member
+from backend.app.models import Balance, Member, Points
 from backend.app.services.audit_service import AuditService
 
 RESOURCE = 'member'
@@ -20,6 +23,35 @@ class MemberService:
         if not member:
             raise NotFoundError('会员不存在')
         return member
+
+    @staticmethod
+    def with_assets(member_id):
+        """会员档案 + 储值余额 + 积分
+
+        **两个资产一起给**：不管收银台还是顾客自己，想知道的就是
+        「他账上有多少钱、多少分」，分三个请求没意义。
+
+        没有账户时给的是「0 的表示」而不是 None——**这里和员工端那个列表
+        不一样**：那边要区分「看不到」和「没有」（没权限时给 null），
+        而这是本人的数据，不存在看不到。
+        """
+        from backend.app.services.balance_service import BalanceService
+        from backend.app.services.points_service import PointsService
+
+        member = MemberService.get_or_404(member_id)
+
+        balance = Balance.query.filter_by(member_id=member_id).first()
+        points = Points.query.filter_by(member_id=member_id).first()
+
+        data = member.to_dict()
+        data['balance'] = (balance.to_dict() if balance
+                           else BalanceService.empty_dict(member_id))
+        points_data = points.to_dict() if points else PointsService.empty_dict(member_id)
+        # 顺手把「这些分能抵多少钱」算出来——**用 service 的换算，不另写一套**。
+        # 前端拿它直接显示，顾客不用心算「320 分是几块钱」
+        points_data['amount'] = float(PointsService.amount_for_points(points_data['balance']))
+        data['points'] = points_data
+        return data
 
     @staticmethod
     def get_by_mobile(mobile):

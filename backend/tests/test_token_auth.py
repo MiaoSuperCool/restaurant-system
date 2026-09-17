@@ -178,7 +178,10 @@ def test_expired_token_is_rejected(client, app, admin_staff):
     app.config['MP_TOKEN_MAX_AGE'] = -1
 
     with app.app_context():
-        assert token_utils.parse_token(token) is None
+        # 注意用的是 parse_staff_token 而不是 parse_token：
+        # 后者只验签不判过期（有效期按类型定，得先解开载荷才知道是哪种），
+        # 判过期在 parse_staff_token / parse_member_token 里各判各的
+        assert token_utils.parse_staff_token(token) is None
     assert client.get('/api/stores', headers=_headers(token)).status_code == 401
 
 

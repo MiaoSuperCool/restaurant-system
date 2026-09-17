@@ -7,7 +7,7 @@ from .dish import Dish
 from .dish_option import DishOption, DishOptionGroup
 from .groupon_voucher import GrouponVoucher
 from .legacy import LegacyMap, Reconciliation, SyncRecord
-from .member import Member
+from .member import Member, MemberVerifyCode
 from .order import Order, OrderItem, OrderItemOption
 from .payment import Payment
 from .permission import Permission
@@ -38,6 +38,7 @@ __all__ = [
     'RefundTxn',
     'GrouponVoucher',
     'Member',
+    'MemberVerifyCode',
     'Balance',
     'BalanceTxn',
     'Points',

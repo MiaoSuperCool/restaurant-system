@@ -5,7 +5,7 @@ from flask_smorest import Blueprint
 from backend.app.schemas.auth_schema import LoginSchema
 from backend.app.services.auth_service import AuthService
 from backend.app.utils.api_response import api_response
-from backend.app.utils.token import max_age as token_max_age
+from backend.app.utils.token import staff_token_max_age
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -57,7 +57,7 @@ def login_for_token(data):
         data={
             'token': token,
             # 秒数，前端拿它算什么时候该重新登录
-            'expires_in': token_max_age(),
+            'expires_in': staff_token_max_age(),
             **AuthService.session_payload(staff),
         }
     ))

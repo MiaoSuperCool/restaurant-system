@@ -6,6 +6,7 @@ from .coupon_service import CouponService
 from .dish_service import DishService
 from .groupon_service import GrouponService
 from .legacy_service import LegacyService
+from .member_auth_service import MemberAuthService
 from .member_service import MemberService
 from .order_service import OrderService
 from .points_service import PointsService
@@ -25,6 +26,7 @@ __all__ = [
     'DishService',
     'GrouponService',
     'LegacyService',
+    'MemberAuthService',
     'MemberService',
     'OrderService',
     'PointsService',

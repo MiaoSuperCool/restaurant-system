@@ -181,6 +181,17 @@ COUPON_TEMPLATES = [
         'name': '新客立减 10 元',
         'type': 'full_cut', 'value': '10.00', 'min_amount': '0',
         'valid_days': 60,
+        # **挂到券中心**：顾客端「券中心」页要有东西可领，不然那一页是空的。
+        # 每人限领一张——这正是自领和员工发券的区别所在
+        'claimable': True, 'per_member_limit': 1,
+    },
+    {
+        # 券中心里的第二张：折扣券，而且限量。
+        # 两个字段一起演示：「已领 x/50」和「领完了」长什么样
+        'name': '周末 88 折',
+        'type': 'discount', 'value': '0.88', 'min_amount': '30.00',
+        'valid_days': 30, 'total_quantity': 50,
+        'claimable': True, 'per_member_limit': 2,
     },
 ]
 
@@ -556,18 +567,26 @@ def seed_demo(reset=False):
     for spec in COUPON_TEMPLATES:
         template = CouponTemplate.query.filter_by(name=spec['name']).first()
         if not template:
-            template = CouponTemplate(
-                name=spec['name'], type=spec['type'],
-                value=Decimal(spec['value']),
-                min_amount=Decimal(spec.get('min_amount') or '0'),
-                valid_from=_days_after(coupon_now, spec.get('start_days')),
-                valid_to=_days_after(coupon_now, spec['valid_days']),
-                total_quantity=spec.get('total_quantity'),
-            )
-            template.stores = [stores_by_code[c] for c in spec.get('stores', [])]
+            template = CouponTemplate(name=spec['name'])
             db.session.add(template)
-            db.session.flush()              # 下面发券要用 template.id
             stats['coupon_templates'] += 1
+
+        # **每次跑都把定义里的字段写回去**，不只是新建的时候。
+        #
+        # 和门店菜品覆盖（STORE_DISH_OVERRIDES）一个做法：演示数据是「演示环境
+        # 的一部分」，跑一遍就该恢复成定义的样子。券模板后来加了 is_claimable /
+        # per_member_limit 两个字段——只在新建立时赋值的话，老环境跑多少遍
+        # 券中心都是空的
+        template.type = spec['type']
+        template.value = Decimal(spec['value'])
+        template.min_amount = Decimal(spec.get('min_amount') or '0')
+        template.valid_from = _days_after(coupon_now, spec.get('start_days'))
+        template.valid_to = _days_after(coupon_now, spec['valid_days'])
+        template.total_quantity = spec.get('total_quantity')
+        template.is_claimable = spec.get('claimable', False)
+        template.per_member_limit = spec.get('per_member_limit')
+        template.stores = [stores_by_code[c] for c in spec.get('stores', [])]
+        db.session.flush()                  # 下面发券要用 template.id
 
         for mobile, count in spec.get('issue', []):
             member = members_by_mobile[mobile]

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from flask_login import current_user
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from backend.app.errors import BusinessError, NotFoundError
@@ -89,6 +89,8 @@ class CouponService:
                 type=data['type'],
                 value=data['value'],
                 min_amount=data.get('min_amount') or Decimal('0'),
+                is_claimable=data.get('is_claimable', False),
+                per_member_limit=data.get('per_member_limit'),
                 valid_from=data.get('valid_from'),
                 valid_to=data.get('valid_to'),
                 total_quantity=data.get('total_quantity'),
@@ -131,7 +133,8 @@ class CouponService:
             CouponService._assert_discount_value(new_type, new_value)
 
             for field in ('name', 'type', 'value', 'min_amount',
-                          'valid_from', 'valid_to', 'total_quantity', 'status'):
+                          'valid_from', 'valid_to', 'total_quantity',
+                          'is_claimable', 'per_member_limit', 'status'):
                 if field in data:
                     setattr(template, field, data[field])
 
@@ -281,6 +284,119 @@ class CouponService:
                 resource=RESOURCE,
                 status='failed',
             )
+            raise
+
+    # ---------- 顾客自领（券中心） ----------
+
+    @staticmethod
+    def _claim_blocked_reason(template, claimed_count):
+        """这张券这个人**现在**能不能领；能领返回 None，不能返回原因
+
+        和 `check()` 一个套路（返回原因而不是抛异常）：券中心要把不能领的券
+        也列出来、并说清楚为什么，而不是干脆不显示——「有张券但我领不了」
+        比「什么都没有」更让人觉得系统坏了。
+        """
+        if not template.is_claimable:
+            return '这张券不是自领的'
+        if template.status != CouponTemplate.STATUS_ACTIVE:
+            return '这张券已经停发了'
+        if template.is_expired:
+            return '这张券已经过期了'
+
+        # **还没生效的能领**：券中心里预告一张「国庆开始用」的券是正常做法，
+        # 领到手在券包里显示「未生效」就行。只有过期的才拦
+        if template.total_quantity is not None and template.issued.count() >= template.total_quantity:
+            return '已经被领完了'
+        if (template.per_member_limit is not None
+                and claimed_count >= template.per_member_limit):
+            return f'每人限领 {template.per_member_limit} 张'
+        return None
+
+    @staticmethod
+    def _claimed_counts(member_id, template_ids):
+        """这个人在这些模板上各领过几张
+
+        **一次查完**，不要在循环里逐个 count——券中心一屏十几张券，
+        那就是十几次查询。这和别处「人数撑死几十个，逐条过 check() 更好读」
+        的判断不一样：这里是**按模板**查，模板数固定且会随运营增长，
+        而且这个计数是纯 SQL 就能表达的（没有过期那类"算出来"的状态）
+        """
+        if not template_ids:
+            return {}
+        rows = (db.session.query(UserCoupon.template_id, func.count(UserCoupon.id))
+                .filter(UserCoupon.member_id == member_id,
+                        UserCoupon.template_id.in_(template_ids))
+                .group_by(UserCoupon.template_id)
+                .all())
+        return dict(rows)
+
+    @staticmethod
+    def get_claimable_templates(member_id):
+        """券中心：有哪些券，以及这个人各能领几张
+
+        **连不能领的也返回**（带 `blocked_reason`），理由见
+        `_claim_blocked_reason`。
+        """
+        templates = (CouponTemplate.query
+                     .filter(CouponTemplate.is_claimable.is_(True))
+                     .order_by(CouponTemplate.id.desc())
+                     .all())
+        claimed = CouponService._claimed_counts(member_id, [t.id for t in templates])
+
+        result = []
+        for template in templates:
+            count = claimed.get(template.id, 0)
+            reason = CouponService._claim_blocked_reason(template, count)
+            result.append({
+                **template.to_dict(),
+                'claimed_count': count,
+                'can_claim': reason is None,
+                'blocked_reason': reason,
+            })
+        return result
+
+    @staticmethod
+    def claim(template_id, member):
+        """顾客自己领一张券
+
+        和员工发券（`issue`）**不是同一条路**，虽然最后都是建一条 `UserCoupon`：
+
+            发券   可以一次给一批人、每人好几张、不看每人限领
+            自领   一次一张、受每人限领约束、领完还要防他连点
+
+        领到的券 `issued_by_name` 留空——那个字段的语义就是「谁发的，
+        空 = 顾客自己领的」，所以自领不需要额外标记。
+        """
+        member_id = member.id
+
+        template = CouponService.get_template_or_404(template_id)
+        if not template.is_claimable:
+            raise BusinessError('这张券不能自己领')
+
+        # 锁住模板行再算总量和已领数——不锁的话两个人同时领最后一张，
+        # 各自都看到「还剩 1 张」，结果发出去 2 张（和 issue 那边一个道理）
+        db.session.execute(
+            select(CouponTemplate).where(CouponTemplate.id == template_id).with_for_update()
+        )
+
+        count = (UserCoupon.query
+                 .filter_by(template_id=template_id, member_id=member_id)
+                 .count())
+        reason = CouponService._claim_blocked_reason(template, count)
+        if reason:
+            raise BusinessError(reason)
+
+        try:
+            coupon = UserCoupon(
+                template_id=template.id,
+                member_id=member_id,
+                received_at=datetime.now(timezone.utc),
+            )
+            db.session.add(coupon)
+            db.session.commit()
+            return coupon
+        except Exception:
+            db.session.rollback()
             raise
 
     # ---------- 查券 ----------

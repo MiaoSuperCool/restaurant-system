@@ -115,6 +115,8 @@ def register_blueprints(app):
         members,
         orders,
         public,
+        public_auth,
+        public_member,
         refunds,
         roles,
         staff,
@@ -169,6 +171,8 @@ def register_blueprints(app):
     api.register_blueprint(orders.bp)  # /api/orders
     api.register_blueprint(refunds.bp)  # /api/refunds
     api.register_blueprint(public.bp)  # /api/public/*（顾客端，不鉴权）
+    api.register_blueprint(public_auth.bp)   # /api/public/auth/*（顾客登录，登录即注册）
+    api.register_blueprint(public_member.bp)  # /api/public/me*、/coupons（顾客登录后）
     api.register_blueprint(groupon.bp)  # /api/orders/<id>/vouchers, /api/groupon-vouchers
     api.register_blueprint(legacy.bp)  # /api/legacy（ID 映射 + 同步记录 + 对账）
 

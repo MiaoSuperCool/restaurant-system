@@ -38,6 +38,17 @@ from decimal import Decimal
 from backend.app.extensions import db
 from backend.app.models.base import BaseModel
 
+
+def _as_aware(moment):
+    """库里存的是不带时区的 UTC，比之前补上，免得 naive/aware 相减报错
+
+    有效期判断在模板和持券两边都要用（持券那边直接问模板），转换就这一处。
+    """
+    if moment is not None and moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
 # 券的适用门店（多对多，纯关联表）。
 # 一行都没有 = 全公司通用（和分类的 `category_store` 一个语义）。
 # 两边 CASCADE：这是「配置」不是「业务数据」，门店或券模板没了配置自然消失
@@ -86,6 +97,17 @@ class CouponTemplate(BaseModel):
     # 发出去多少张是运营该管的，卡在用的那一步只会让顾客莫名其妙用不了
     total_quantity = db.Column(db.Integer, nullable=True)
 
+    # 挂到券中心让顾客自己领。默认不挂——券默认是「运营圈了人才发」的东西，
+    # 敞开让人领得是想清楚了才做的事
+    is_claimable = db.Column(db.Boolean, nullable=False, default=False)
+
+    # 每人能自己领几张；NULL = 不限
+    #
+    # **只管「自领」这一条路**，不约束员工发券：员工定向发是「我知道我在给谁、
+    # 给几张」，有审计兜着；这个字段防的是顾客反复点「领取」。
+    # 混成一条规则的话，补偿顾客时想多给一张还得先去改模板
+    per_member_limit = db.Column(db.Integer, nullable=True)
+
     status = db.Column(db.String(20), nullable=False, default=STATUS_ACTIVE, index=True)
 
     # 适用门店：空 = 全公司通用
@@ -100,6 +122,22 @@ class CouponTemplate(BaseModel):
         'UserCoupon', backref='template', lazy='dynamic',
         cascade='all, delete-orphan',
     )
+
+    @property
+    def is_expired(self):
+        """过期了没——**每次现算**，不依赖库里任何字段
+
+        和 `UserCoupon.is_expired` 同一套判断，这里放在模板上是因为
+        「这张券过没过期」本来就是模板（有效期）的属性，券只是继承这个结论。
+        """
+        valid_to = _as_aware(self.valid_to)
+        return valid_to is not None and valid_to < datetime.now(timezone.utc)
+
+    @property
+    def not_started(self):
+        """还没到生效时间——和过期一样是算出来的"""
+        valid_from = _as_aware(self.valid_from)
+        return valid_from is not None and valid_from > datetime.now(timezone.utc)
 
     @property
     def is_all_stores(self):
@@ -131,6 +169,8 @@ class CouponTemplate(BaseModel):
             'valid_from': self.valid_from.isoformat() if self.valid_from else None,
             'valid_to': self.valid_to.isoformat() if self.valid_to else None,
             'total_quantity': self.total_quantity,
+            'is_claimable': self.is_claimable,
+            'per_member_limit': self.per_member_limit,
             'status': self.status,
             'status_label': self.STATUS_LABELS.get(self.status, self.status),
             'store_ids': [store.id for store in self.stores],
@@ -182,28 +222,14 @@ class UserCoupon(BaseModel):
 
     order = db.relationship('Order', backref=db.backref('used_coupons', lazy='dynamic'))
 
-    @staticmethod
-    def _as_aware(moment):
-        """库里存的是不带时区的 UTC，比之前补上，免得 naive/aware 相减报错"""
-        if moment is not None and moment.tzinfo is None:
-            return moment.replace(tzinfo=timezone.utc)
-        return moment
-
+    # 过期/未生效直接问模板——有效期本来就是模板的属性，券只是继承这个结论
     @property
     def is_expired(self):
-        """过期了没——**每次现算**，不依赖库里的 status"""
-        valid_to = self._as_aware(self.template.valid_to)
-        return valid_to is not None and valid_to < datetime.now(timezone.utc)
+        return self.template.is_expired
 
     @property
     def not_started(self):
-        """还没到生效时间——**和过期一样是算出来的**
-
-        「从下周一开始的券」和「已经过期的券」都是「现在用不了」，
-        但原因不同、该说的话也不同，所以分开两个状态。
-        """
-        valid_from = self._as_aware(self.template.valid_from)
-        return valid_from is not None and valid_from > datetime.now(timezone.utc)
+        return self.template.not_started
 
     @property
     def display_status(self):

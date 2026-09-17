@@ -67,9 +67,9 @@ class AuthService:
         靠等 token 过期显然不行。权限也是现查的，同理。
         """
         from backend.app.models.staff import Staff
-        from backend.app.utils.token import parse_token
+        from backend.app.utils.token import parse_staff_token
 
-        payload = parse_token(token)
+        payload = parse_staff_token(token)
         if not payload:
             return None
 
