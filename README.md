@@ -30,7 +30,9 @@ python create_db.py                    # 自动创建 .env 里指定的库
 cd backend
 flask db upgrade
 python manage.py seed-rbac             # 38 个权限码 + 8 个预置角色
-python manage.py seed-demo             # 6 家门店、15 道菜、9 个账号、12 笔订单
+python manage.py seed-demo             # 6 家门店、15 道菜、9 个账号、12 笔订单、券和会员
+python manage.py import-legacy         # 从（模拟的）老系统迁会员和储值，顺便记下 ID 映射和同步记录
+python manage.py reconcile             # 跑一次日结对账——「一分不差」是这一条命令说出来的
 
 # 4. 起服务
 flask run --debug                      # 后端 :5000
@@ -125,6 +127,23 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
   它们在数据库里的 `status` **都还是 `unused`**，界面上却分别显示「已过期」和「未生效」
 
 <img src="docs/screenshots/coupons.png" width="820" alt="券模板管理" />
+
+- **老系统共存**（二期）—— 灰度切换期间新老系统并行跑，靠三件套让两边对得上：
+
+    老系统的号 → 新系统的谁    `python manage.py import-legacy` 一条条记，之后能倒查
+    推过去了没有               成功也记，不然「今天到底推没推」说不清
+    账对不对得上               `python manage.py reconcile`，日结那个定时任务本身
+
+  **对账对的是「自己跟自己」**：储值是「账户余额 vs 流水累加」，订单是
+  「订单实收 vs 支付流水」。设计文档说储值那 80 万要一分不差——第一步就是先证明
+  新系统自己记的账和流水是自洽的，账都自己跟自己对不起，跟别人比更没有意义。
+  （拿老系统的日报来比是另一半，**没有外部数据源就没做**，见下面「哪些是模拟的」。）
+
+  一个容易漏的点：**「对不对得上」不能只看差异金额**。一个会员多 100、
+  一个会员少 100，合计正好抵消、差值是 0，但这两处都是错的。
+  所以记录里单有一个 `mismatch_count`，状态由它决定。
+
+<img src="docs/screenshots/reconcile.png" width="820" alt="对账" />
 
 - **审计日志** —— 改价、上下架、发券、开停账号等关键动作自动留痕，含变更前后值
 - **角色权限矩阵** —— 8 个角色 × 38 个权限码的全貌，一眼看出谁能在哪些门店做什么
@@ -235,9 +254,10 @@ restaurant-system/
 │   │   ├── api/           # 蓝图路由
 │   │   ├── rbac.py        # 权限码目录 + 预置角色（权限体系的唯一事实来源）
 │   │   ├── demo.py        # 演示数据定义
+│   │   ├── legacy_import.py  # 老系统迁移（模拟的导出数据 + 迁移逻辑）
 │   │   └── utils/         # 统一响应、权限装饰器、外键引用检查
 │   ├── migrations/        # Alembic 迁移
-│   └── tests/             # pytest（225 个）
+│   └── tests/             # pytest（245 个）
 ├── web-staff/             # 内部人员网页端（Vue3）
 │   └── src/
 │       ├── api/           # axios 封装 + 按领域拆分的接口模块
@@ -265,7 +285,9 @@ restaurant-system/
 | **优惠券的发放** | 券能用、能发、能核账了，但**顾客自己领券**还没做——现在只能员工在后台发。平台买的券（美团/抖音）自动进券包也没做，那条要等顾客端登录打通 |
 | **微信登录** | 会员表留了 `openid` / `unionid`，但没有真 AppID 接不了——所以现在只能员工代客办卡 |
 | **退款的「打款」这一步** | 流程走通了（申请→审批→确认打款→记流水），但确认打款目前只是记账，没有真的调微信退款接口 |
-| **ERP 对接 / 老系统数据迁移** | 属于二~四期，且不存在真实系统可对接 |
+| **ERP 对接** | 没做。ERP 和门店系统之间推订单、拉库存那套接口不存在可对接的实物 |
+| **跟老系统对账的那一半** | 「我们记的数 vs 老系统报的数」**做不了**——需要老系统导出的日报，没有那个数据源，硬做就是编。做的是「自己跟自己」的那一半（账户余额 vs 流水累加），README 上面写了理由 |
+| **老系统迁移** | 迁的是**一份模拟的导出数据**（`app/legacy_import.py` 里那个常量，真做时换成读 CSV）。迁移逻辑、ID 映射、同步记录、对账都是真的 |
 | **顾客小程序的支付** | 「立即支付」只是把「钱付了」记下来，流水号带 `MOCK` 前缀。**协议层已经写好并测过**（签名/验签/AES 解密 + 自建模拟网关），差的是接到业务流程里和一个真商户号 |
 | **员工小程序** | 未开始（二期）。服务员代点单、后厨出单在网页端已经能用，小程序只是更顺手 |
 
@@ -278,6 +300,8 @@ flask run --debug                      # 开发服务器 :5000
 flask db upgrade                       # 应用迁移
 python manage.py seed-rbac             # 同步权限码与角色（改了 rbac.py 之后跑）
 python manage.py seed-demo             # 灌演示数据（--reset 清空重建）
+python manage.py import-legacy         # 从老系统迁会员和储值（模拟数据，幂等）
+python manage.py reconcile             # 日结对账（定时任务就是这条命令）
 python manage.py create-admin          # 创建超级管理员
 pytest                                 # 全部测试
 pytest --cov=app tests/                # 带覆盖率
