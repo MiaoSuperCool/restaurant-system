@@ -104,6 +104,14 @@ const router = createRouter({
           meta: { permissions: ['staff:manage', 'staff:manage:all'] },
         },
         {
+          path: 'legacy',
+          name: 'legacy',
+          component: () => import('@/views/LegacyView.vue'),
+          // 对账 + 同步记录 + ID 映射，都是「新老系统共存」那一摊，一个码管住。
+          // 只有财务和老板有 sync:view
+          meta: { permissions: ['sync:view'] },
+        },
+        {
           path: 'audit',
           name: 'audit',
           component: () => import('@/views/AuditView.vue'),

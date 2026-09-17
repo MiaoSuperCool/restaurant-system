@@ -107,8 +107,18 @@ describe('Sidebar 菜单按权限渲染', () => {
       '门店菜单',
       '员工',
       '角色',
+      '对账',
       '审计日志',
     ])
+  })
+
+  it('对账是 sync:view，收银员看不到', async () => {
+    // 「对账」这一页装着对账记录、同步记录、ID 映射，是财务和老板的活
+    loginAs(false, ['order:view', 'finance:view'])
+    expect(await menuTexts()).toEqual(['主页面', '订单', '团购券'])
+
+    loginAs(false, ['order:view', 'sync:view'])
+    expect(await menuTexts()).toEqual(['主页面', '订单', '对账'])
   })
 
   it('运营主管能管全公司菜单，但没有员工管理和审计', async () => {

@@ -468,3 +468,83 @@ export interface UserCoupon {
   /** 只有「这单能用哪些券」那个接口带：这张券实际能抵多少 */
   discount?: number
 }
+
+/** 老系统 ID ↔ 新系统 ID（对应 legacy.py 的 LegacyMap.to_dict） */
+export interface LegacyMap {
+  id: number
+  /** member 会员 / balance 储值账户 */
+  target_type: string
+  target_type_label: string
+  target_id: number
+  /** 老系统那边的号，是字符串——老系统可能是自增数字，也可能是 'M0010086' */
+  legacy_id: string
+  remark: string
+  created_at: string | null
+}
+
+/** 一次同步动作的记录（对应 legacy.py 的 SyncRecord.to_dict） */
+export interface SyncRecord {
+  id: number
+  /** push 推出去 / pull 拉进来 */
+  direction: string
+  direction_label: string
+  target: string
+  target_label: string
+  category: string
+  category_label: string
+  /** success / failed / pending */
+  status: string
+  status_label: string
+  /** 这条同步的是哪一条数据（单号/会员号/日报） */
+  ref: string
+  /** 失败原因原样留着，不翻译 */
+  message: string
+  synced_at: string | null
+}
+
+/** 同步汇总（不跟着列表的筛选走，永远是全量） */
+export interface SyncSummary {
+  success: number
+  failed: number
+  pending: number
+  total: number
+}
+
+/** 对账里的一条差异——会员那条带 member_*，订单那条带 order_* */
+export interface ReconciliationDetail {
+  member_id?: number
+  member_name?: string
+  order_id?: number
+  order_no?: string
+  expected: number
+  actual: number
+  diff: number
+}
+
+/**
+ * 对账记录（对应 legacy.py 的 Reconciliation.to_dict）
+ *
+ * **`diff_amount` 和 `mismatch_count` 要分开看**：一个会员多 100、一个少 100，
+ * 差异合计是 0，但这两处都是错的。状态由 `mismatch_count` 决定，
+ * 不能只看金额
+ */
+export interface Reconciliation {
+  id: number
+  /** 业务日期（本地自然日），不是 UTC 日期 */
+  biz_date: string | null
+  store_id: number | null
+  /** 储值对账不挂门店，这里会是「全公司」 */
+  store_name: string
+  /** order 订单 / balance 储值 */
+  category: string
+  category_label: string
+  expected_amount: number
+  actual_amount: number
+  diff_amount: number
+  /** matched 对得上 / mismatched 有差异 */
+  status: string
+  status_label: string
+  mismatch_count: number
+  detail: ReconciliationDetail[]
+  checked_at: string | null
+}

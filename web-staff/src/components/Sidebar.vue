@@ -34,6 +34,8 @@ const ALL_MENUS = [
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
   // 角色矩阵放在员工旁边：给人分配角色的时候要知道这个角色能干什么
   { name: '角色', path: '/roles', permissions: ['staff:manage', 'staff:manage:all'] },
+  // 对账放在审计旁边：都是「事后回看」的入口，看的也都是同一批人（财务/老板）
+  { name: '对账', path: '/legacy', permissions: ['sync:view'] },
   { name: '审计日志', path: '/audit', permissions: ['audit:view'] },
 ]
 
