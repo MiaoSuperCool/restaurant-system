@@ -118,6 +118,7 @@ def register_blueprints(app):
         coupons,
         dishes,
         groupon,
+        legacy,
         main,
         members,
         orders,
@@ -177,6 +178,7 @@ def register_blueprints(app):
     api.register_blueprint(refunds.bp)  # /api/refunds
     api.register_blueprint(public.bp)  # /api/public/*（顾客端，不鉴权）
     api.register_blueprint(groupon.bp)  # /api/orders/<id>/vouchers, /api/groupon-vouchers
+    api.register_blueprint(legacy.bp)  # /api/legacy（ID 映射 + 同步记录 + 对账）
 
     # Swagger UI 页面（依赖已注册的路由，必须放最后）
     register_api_docs(app)

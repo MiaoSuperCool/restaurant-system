@@ -322,3 +322,107 @@ def test_rerun_replaces_the_same_day_record(as_admin, app, admin_staff, login):
         _run(app, 'balance')
         _run(app, 'balance')
         assert Reconciliation.query.filter_by(category='balance').count() == 1
+
+
+# ---------- 接口 ----------
+
+def test_maps_api(as_admin, app, client, admin_staff, login):
+    """建映射 → 列表 → 按老号查 → 删掉，整条走一遍"""
+    member_id = _member(app)
+    login('admin', 'Admin123!')
+
+    resp = client.post('/api/legacy/maps', json={
+        'target_type': 'member', 'target_id': member_id,
+        'legacy_id': 'M0001001', 'remark': '手工补录',
+    })
+    assert resp.status_code == 201
+    map_id = resp.get_json()['data']['id']
+
+    listed = client.get('/api/legacy/maps', query_string={'search': 'M0001'})
+    assert [m['legacy_id'] for m in listed.get_json()['data']['maps']] == ['M0001001']
+
+    resolved = client.get('/api/legacy/maps/resolve',
+                          query_string={'legacy_id': 'M0001001'}).get_json()['data']
+    assert resolved['found'] is True
+    assert resolved['target']['id'] == member_id
+
+    # 没迁过的号：found=False，而不是 404
+    missing = client.get('/api/legacy/maps/resolve',
+                         query_string={'legacy_id': 'M9999'}).get_json()['data']
+    assert missing['found'] is False
+    assert missing['target'] is None
+
+    assert client.delete(f'/api/legacy/maps/{map_id}').status_code == 200
+    assert client.get('/api/legacy/maps').get_json()['data']['maps'] == []
+
+
+def test_sync_records_api(as_admin, app, client, admin_staff, login):
+    login('admin', 'Admin123!')
+    with as_admin():
+        LegacyService.record_sync('pull', 'member', 'M001')
+        LegacyService.record_sync('pull', 'member', 'M002',
+                                  status=SyncRecord.STATUS_FAILED, message='连接超时')
+        db.session.commit()
+
+    data = client.get('/api/legacy/sync-records').get_json()['data']
+    assert data['summary'] == {'success': 1, 'failed': 1, 'pending': 0, 'total': 2}
+    assert len(data['records']) == 2
+
+    only_failed = client.get('/api/legacy/sync-records',
+                             query_string={'status': 'failed'}).get_json()['data']
+    assert [r['ref'] for r in only_failed['records']] == ['M002']
+    assert only_failed['records'][0]['message'] == '连接超时'
+
+
+def test_reconcile_api_returns_the_diff_detail(as_admin, app, client, admin_staff, login):
+    """跑对账要**把差异明细一起返回**——只说「有差异」，财务还得自己去翻"""
+    from decimal import Decimal
+
+    from backend.app.models import BalanceTxn
+
+    login('admin', 'Admin123!')
+    member_id = _member(app)
+    _balance(app, member_id, '78.00')
+    with app.app_context():
+        db.session.add(BalanceTxn(
+            member_id=member_id, type=BalanceTxn.TYPE_RECHARGE,
+            principal_delta=Decimal('100.00'), bonus_delta=Decimal('0'),
+            principal_after=Decimal('100.00'), bonus_after=Decimal('0'),
+        ))
+        db.session.commit()
+
+    record = client.post('/api/legacy/reconciliations/run',
+                         json={'category': 'balance'}).get_json()['data']
+    assert record['status'] == 'mismatched'
+    assert record['mismatch_count'] == 1
+    assert record['detail'][0]['member_name'] == '测试会员'
+    assert record['detail'][0]['diff'] == -22.0
+
+    # 再查一次列表，结论是留档的
+    listed = client.get('/api/legacy/reconciliations').get_json()['data']['records']
+    assert len(listed) == 1
+    assert listed[0]['diff_amount'] == -22.0
+
+
+def test_reconcile_api_rejects_a_bad_store(as_admin, app, client, admin_staff, login):
+    """门店 id 写错要报错，不能算出个「0 对 0、对得上」"""
+    login('admin', 'Admin123!')
+    resp = client.post('/api/legacy/reconciliations/run',
+                       json={'category': 'order', 'store_id': 999999})
+    assert resp.status_code == 404
+
+    # 订单对账不传门店也不行
+    assert client.post('/api/legacy/reconciliations/run',
+                       json={'category': 'order'}).status_code == 400
+
+
+def test_legacy_needs_sync_view(app, client, make_staff, login):
+    """没有 sync:view 的人进不来——收银员不干对账和对接的活"""
+    make_staff('shouyin9', 'cashier')
+    login('shouyin9', 'Passw0rd!')
+
+    assert client.get('/api/legacy/maps').status_code == 403
+    assert client.get('/api/legacy/sync-records').status_code == 403
+    assert client.get('/api/legacy/reconciliations').status_code == 403
+    assert client.post('/api/legacy/reconciliations/run',
+                       json={'category': 'balance'}).status_code == 403
