@@ -8,5 +8,7 @@ target-version = "py38"
 select = ["E", "F", "W", "I", "UP", "B"]  # 基础错误 + import 排序 + 语法升级 + 常见 bug
 
 [lint.per-file-ignores]
-# 迁移文件由 Alembic 自动生成，不强制风格
-"backend/migrations/**" = ["E501", "W291"]
+# 迁移文件由 Alembic 自动生成，不强制风格。
+# I001（import 排序）也一起忽略：Alembic 生成的顺序是它对模板的还原，
+# 手工排一遍下次 `flask db migrate` 又会变回去——改它纯属白费力气
+"backend/migrations/**" = ["E501", "W291", "I001", "F401"]
