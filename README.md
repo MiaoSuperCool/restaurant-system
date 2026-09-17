@@ -334,6 +334,16 @@ npm run build                          # 生产构建
    这个坑已经踩过四次（`staff.employment_type`、`order.refunded_amount`、
    `order.query_token`、`order.points_used`），**不是偶发**——新表不受影响，
    给老表加必填列必然会遇到。
+
+   ⚠️ 另外两条，踩过就知道疼：
+
+   - **外键要显式起名**：`sa.ForeignKeyConstraint(..., name='fk_<表>_<列>')`。
+     交给 MySQL 起名会得到 `order_ibfk_3` 这种带序号的，换个环境序号一变，
+     `drop_constraint` 就找不到它了（见 `52bd067fde97`）
+   - **自动生成的 `downgrade()` 有可能是坏的**：它会先 `drop_index` 再 `drop_table`，
+     但外键用着的那条索引 MySQL 不让单独删（errno 1553）。表都要删了，
+     索引跟着走就行——把那几行 `drop_index` 删掉，留 `op.drop_table(...)`。
+     **生成完迁移顺手 `flask db downgrade` 再 `upgrade` 一遍**，十秒钟的事
 4. 权限：在 `app/rbac.py` 的 `PERMISSIONS` 登记权限码 → 决定哪些角色拥有 → `python manage.py seed-rbac`
    （**改了 rbac.py 一定得跑这一步**：新码不落库的话，前端 `hasPermission` 就是 false，
    按钮不显示——不报错，只是"点不到"，很难往这上面想）
