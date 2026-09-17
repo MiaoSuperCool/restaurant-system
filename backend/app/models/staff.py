@@ -39,6 +39,11 @@ class Staff(UserMixin, BaseModel):
     mobile = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
+    # 小程序 token 的版本号。**无状态 token 没法「删掉」，只能让它失效**——
+    # 登出、改密码时 +1，旧 token 里带的版本对不上就废了（见 utils/token.py）。
+    # 加这个字段比单开一张 token 表省事：不用清理过期行，也不用多查一次库
+    token_version = db.Column(db.Integer, nullable=False, default=0)
+
     # 归属门店：总部账号（运营主管/财务/老板）不归属具体门店，所以可空。
     # 数据范围「本店」的判定就靠这个字段。
     # ondelete='RESTRICT'：门店还有员工时不能删（store_service 里也有一道更友好的检查）

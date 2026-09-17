@@ -180,6 +180,10 @@ class StaffService:
                 if len(password) < 6:
                     raise BusinessError('密码不能少于6位')
                 staff.set_password(password)
+                # 改密码 = 把这个人手里所有旧 token 作废。
+                # 「改密码」这个动作本身就是在说「之前那些凭据不算数了」，
+                # 不跟着踢 token 的话，改了密码等于没改（旧 token 还能用到过期）
+                staff.token_version = (staff.token_version or 0) + 1
 
             for field in ('employment_type', 'is_shared', 'is_active', 'is_admin'):
                 if field in data:
@@ -251,4 +255,3 @@ class StaffService:
             )
 
             raise
-

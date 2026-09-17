@@ -68,6 +68,14 @@ class Config:
     # token 本来就存在 session 里，session 没了它就没了，不需要再单独计时。
     WTF_CSRF_TIME_LIMIT = None
 
+    # 小程序 token 的有效期（秒），默认 7 天
+    #
+    # 比网页端的 session 长得多，因为场景不一样：收银台的网页是「开一天」，
+    # 服务员的小程序是「揣兜里」，每天上班先登一次会烦死人。
+    # 到期就必须重新输密码——这中间如果账号被停用、角色被改，**下一条请求就生效**
+    # （token 里只放「你是谁」，权限每次现查，见 utils/token.py）
+    MP_TOKEN_MAX_AGE = int(os.getenv('MP_TOKEN_MAX_AGE', 7 * 24 * 3600))
+
     # 密码加密强度（2的12次方次计算），数值越高越安全，但登录越慢
     BCRYPT_ROUNDS = int(os.getenv('BCRYPT_ROUNDS', 12))
 

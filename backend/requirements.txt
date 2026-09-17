@@ -8,6 +8,9 @@
 
 # Web 框架
 Flask==3.0.3
+# 签名用（session cookie 和员工小程序的 token 都是它签的）。
+# Flask 自己依赖它，这里显式写出来：现在我们是直接用它，不再只是搭便车
+itsdangerous==2.2.0
 
 # Flask 扩展
 Flask-Caching==2.3.1
