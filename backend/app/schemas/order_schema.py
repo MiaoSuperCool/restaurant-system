@@ -11,6 +11,11 @@ class OrderQuerySchema(PageQuerySchema):
 
     store_id = fields.Integer(required=False, metadata={'description': '按门店筛选'})
     status = fields.Str(required=False, validate=one_of(Order.STATUS_LABELS))
+    with_items = fields.Boolean(
+        load_default=False,
+        metadata={'description': '要不要带上每单的菜品明细。**出单页要**'
+                                 '（后厨得知道做什么菜），网页端的列表不要'},
+    )
 
 
 class OrderItemCreateSchema(Schema):

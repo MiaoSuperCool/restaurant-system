@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from flask_login import current_user
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from backend.app.errors import BusinessError, NotFoundError
 from backend.app.extensions import db
@@ -57,7 +58,16 @@ class OrderService:
 
     @staticmethod
     def get_paginated_orders(page=1, per_page=10, search=None, store_ids=None,
-                             store_id=None, status=None):
+                             store_id=None, status=None, with_items=False):
+        """订单列表
+
+        `with_items=True` 会把每单的明细也查出来（**出单页要用**：
+        后厨得知道要做什么菜，只有单号和金额的单子没法做）。
+
+        不带的时候不预加载明细——网页端的列表只要汇总，白查一遍明细是浪费。
+        带上就必须预加载：不预加载的话每行订单都要再查一次明细和规格，
+        50 单就是 100 多次查询。
+        """
         query = Order.query
 
         # 数据范围：店长只看得到本店订单
@@ -69,6 +79,11 @@ class OrderService:
             query = query.filter(Order.status == status)
         if search:
             query = query.filter(Order.order_no.ilike(f'%{search}%'))
+
+        if with_items:
+            query = query.options(
+                selectinload(Order.items).selectinload(OrderItem.options),
+            )
 
         return (query
                 .order_by(Order.id.desc())

@@ -386,3 +386,25 @@ def test_needs_order_permission(client, normal_staff, make_staff, login):
     login('chushi', 'Passw0rd!')
     assert client.get('/api/orders').status_code == 200
     assert _order(client, 1, []).status_code == 403
+
+
+def test_list_can_include_items(client, admin_staff, login):
+    """订单列表默认不带明细，加 with_items 才带
+
+    **出单页要**：后厨得知道做什么菜，只有单号和金额的单子没法做。
+    网页端的列表不要——多查一遍明细是白花钱。
+    """
+    login('admin', 'Admin123!')
+    store = _store(client)
+    dish, opt = _dish_with_options(client)
+    # 份量是必选组，不选会被拒——这里选「中份」（不加价）
+    _order(client, store['id'], [
+        {'dish_id': dish['id'], 'quantity': 2, 'option_ids': [opt['medium']]},
+    ])
+
+    plain = client.get('/api/orders').get_json()['data']['orders'][0]
+    assert 'items' not in plain
+
+    detailed = client.get('/api/orders', query_string={'with_items': 1}).get_json()['data']['orders'][0]
+    assert [item['dish_name'] for item in detailed['items']] == ['牛肉面']
+    assert detailed['items'][0]['quantity'] == 2

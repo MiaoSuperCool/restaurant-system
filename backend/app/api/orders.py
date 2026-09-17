@@ -31,12 +31,16 @@ def index(params):
         store_ids=current_user.accessible_store_ids(),
         store_id=params.get('store_id'),
         status=params.get('status'),
+        # 出单页要菜品明细（后厨得知道做什么菜），网页端的列表不要——
+        # 由调用方自己说，见 OrderQuerySchema 里那个字段的说明
+        with_items=params.get('with_items', False),
     )
 
     return jsonify(api_response(
         success=True,
         data={
-            'orders': [order.to_dict() for order in pagination.items],
+            'orders': [order.to_dict(with_items=params.get('with_items', False))
+                       for order in pagination.items],
             'pagination': {
                 'page': pagination.page,
                 'per_page': pagination.per_page,
