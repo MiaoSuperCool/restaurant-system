@@ -29,8 +29,11 @@
     </view>
 
     <view class="footer">
-      <text class="link" @tap="goMyOrders">我的订单 ›</text>
-      <text class="version">一期演示 · 支付为模拟</text>
+      <view class="links">
+        <text class="link" @tap="goMyOrders">我的订单 ›</text>
+        <text class="link" @tap="goMine">我的 ›</text>
+      </view>
+      <text class="version">演示项目 · 支付为模拟</text>
     </view>
   </view>
 </template>
@@ -64,6 +67,10 @@ function chooseStore(store: StoreBrief) {
 
 function goMyOrders() {
   uni.navigateTo({ url: '/pages/orders/orders' })
+}
+
+function goMine() {
+  uni.navigateTo({ url: '/pages/mine/mine' })
 }
 
 onMounted(loadStores)
@@ -153,6 +160,12 @@ onMounted(loadStores)
   font-size: 24rpx;
   color: #a0a0a0;
   margin-top: 8rpx;
+}
+
+.links {
+  display: flex;
+  justify-content: center;
+  gap: 40rpx;
 }
 
 .footer {

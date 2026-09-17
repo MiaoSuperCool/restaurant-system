@@ -113,3 +113,66 @@ export interface Order {
   items?: OrderItem[]
   payments?: Payment[]
 }
+
+/** 会员（对应 member.py 的 Member.to_dict） */
+export interface Member {
+  id: number
+  mobile: string | null
+  nickname: string
+  avatar: string
+  is_active: boolean
+  created_at: string | null
+}
+
+/**
+ * 我手里的一张券（对应 coupon.py 的 UserCoupon.to_dict）
+ *
+ * **`status` 有四个值，库里只存两个**：未使用 / 已使用是存进去的，
+ * 已过期 / 未生效是每次现算的（见 models/coupon.py 开头）
+ */
+export interface MemberCoupon {
+  id: number
+  template_id: number
+  template_name: string
+  template_type: string
+  template_type_label: string
+  value: number
+  min_amount: number
+  status: string
+  status_label: string
+  valid_to: string | null
+  received_at: string | null
+  used_at: string | null
+}
+
+/**
+ * 券中心里的一张券（券模板 + 「我领了几张」）
+ *
+ * `can_claim` / `blocked_reason` 是后端算好的——**领不了的券也列出来**，
+ * 并说清楚为什么。
+ */
+export interface ClaimableCoupon {
+  id: number
+  name: string
+  type: string
+  type_label: string
+  value: number
+  min_amount: number
+  valid_from: string | null
+  valid_to: string | null
+  total_quantity: number | null
+  is_all_stores: boolean
+  store_names: string[]
+  issued_count: number
+  claimed_count: number
+  can_claim: boolean
+  blocked_reason: string | null
+}
+
+/** 分页信封 */
+export interface Pagination {
+  page: number
+  per_page: number
+  total: number
+  pages: number
+}

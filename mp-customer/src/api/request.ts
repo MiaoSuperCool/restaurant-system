@@ -4,9 +4,13 @@
  * 和 web-staff/src/api/request.ts 有几处关键不同，都是因为**环境不一样**：
  *
  * 1. 用 `uni.request`——小程序里没有 XMLHttpRequest/fetch
- * 2. **不带 cookie、不带 CSRF 头**。顾客端走的是公开接口，后端把 CSRF 豁免了
- *    （CSRF 防的是「带着 cookie 的浏览器请求」，顾客端不用 cookie，没有这个风险）
+ * 2. **不带 cookie、不带 CSRF 头**。顾客端走的是自己那条 token 通道，
+ *    后端把那组蓝图整个豁免了 CSRF（CSRF 防的是「带着 cookie 的浏览器请求」，
+ *    顾客端不用 cookie，没有这个风险）
  * 3. H5 走 dev server 代理避开跨域；小程序直连后端，**必须是完整地址**
+ * 4. **401 不跳登录页**——这一端大部分接口（菜单、下单）根本不需要登录，
+ *    一 401 就跳转会把正常浏览的人打断。清掉本地 token 就完事，
+ *    要不要引导去登录由页面自己决定
  */
 
 // 后端地址。
@@ -26,6 +30,9 @@ baseUrl = ''
 
 export const API_BASE_URL = baseUrl
 
+/** 顾客 token 在本地存储里的 key */
+export const TOKEN_KEY = 'mp_customer_token'
+
 /** 后端统一响应信封 */
 interface ApiResponse<T> {
   success: boolean
@@ -37,7 +44,8 @@ interface ApiResponse<T> {
 interface RequestOptions {
   url: string
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
-  data?: Record<string, unknown>
+  /** 请求体。用 `object` 不用 `Record<string, unknown>`——interface 没有隐式索引签名 */
+  data?: object
   /** 查询参数（拼在 URL 后面） */
   params?: Record<string, string | number | undefined>
 }
@@ -50,22 +58,41 @@ function buildQuery(params?: RequestOptions['params']): string {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
+export function getToken(): string {
+  return uni.getStorageSync(TOKEN_KEY) || ''
+}
+
 /**
  * 所有接口模块只用这一个函数发请求
  *
  * 和后端约定：**HTTP 状态码不区分业务结果，看信封里的 success**。
  * 所以这里不判 statusCode，直接看 body.success——后端返回的
  * 400/404 也是带着完整信封的 JSON。
+ *
+ * 401 是唯一例外：它意味着手里那个 token 不作数了（过期、被停用、
+ * 或者压根没有）。这时候**把本地的清掉**，然后照常走下面那套报错流程——
+ * 页面自己决定是引导登录还是就当散客继续用。
  */
 export function request<T = unknown>(options: RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {
+    const token = getToken()
     uni.request({
       url: API_BASE_URL + options.url + buildQuery(options.params),
       method: options.method || 'GET',
       data: options.data,
-      header: { 'Content-Type': 'application/json' },
+      header: {
+        'Content-Type': 'application/json',
+        // 没登录时不带这个头。后端认不出来就返回 401，走到下面那个分支
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       timeout: 10000,
       success: (res) => {
+        if (res.statusCode === 401) {
+          uni.removeStorageSync(TOKEN_KEY)
+          reject(new Error('登录已过期'))
+          return
+        }
+
         const body = res.data as ApiResponse<T>
         if (body && body.success) {
           resolve(body.data)
