@@ -58,14 +58,17 @@ class Config:
 
     # CSRF token 的有效期：**不单独计时，跟着 session 走**
     #
-    # Flask-WTF 默认给它 1 小时（WTF_CSRF_TIME_LIMIT = 3600）。而这个项目把
-    # signed token 缓存在 session 里重复用（见 __init__.py 的 set_csrf_cookie），
-    # 两者一叠加就出事：一小时后 token 过期了，服务端却还在拿那个过期的发给客户端，
-    # 于是所有写请求 400——刷新、重登、重启前端都没用，只能清 cookie 才恢复
-    # （清 cookie 会把 session cookie 一起清掉，服务端才被迫生成新的）。
+    # signed token 里带的那个时间戳，是 Flask-WTF 默认拿来判 1 小时过期的
+    # （`validate_csrf` 里 `s.loads(data, max_age=time_limit)`）。
     #
-    # 收银台一开就是 8 小时，从第 2 小时开始全挂。所以这里设成不过期——
-    # token 本来就存在 session 里，session 没了它就没了，不需要再单独计时。
+    # 现在 `set_csrf_cookie` **每个响应都重新签一次**，时间戳永远是新的，
+    # 所以这个限制基本轮不到触发。设成 None 是为了另一种情况：
+    # **页面长时间挂着没发过请求**（收银台一开就是 8 小时），
+    # cookie 里那个 signed 早就超过 1 小时了，默认配置下这时候会 400——
+    # 前端虽然会换一个自动重试，但没必要让这件事发生。
+    #
+    # （以前这里是为了绕开一个 bug 才设成 None：signed 被缓存在 session 里重复发，
+    # 时间戳冻住了，一小时后就一直发过期的出去。病根已经修掉，见 __init__.py。）
     WTF_CSRF_TIME_LIMIT = None
 
     # 小程序 token 的有效期（秒），默认 7 天

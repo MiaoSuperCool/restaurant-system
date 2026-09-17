@@ -6,7 +6,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, jsonify, send_from_directory, session
+from flask import Flask, jsonify, send_from_directory
 from flask_wtf.csrf import CSRFError, generate_csrf
 
 from backend.app.config import DevelopmentConfig, ProductionConfig, TestingConfig
@@ -89,18 +89,10 @@ def create_app(config_name=None):
     # ========== 第7步：配置日志 ==========
     configure_logging(app)
 
-    # ========== 第8步：CSRF Token 写入 Cookie ==========
+    # ========== 第8步：CSRF Token 写入 Cookie（配钥匙的师傅在这里） ==========
     @app.after_request
     def set_csrf_cookie(response):
-        # 机制说明（Flask-WTF 的 CSRF 流程）：
-        # - generate_csrf() 返回 signed token，同时把 raw token 存进 session['csrf_token']（校验用）
-        # - 校验时：从请求头 X-CSRFToken 验签取出 raw token，与 session 里的 raw 比较
-        # - 所以 cookie 里必须是 signed token，不能直接读 session['csrf_token']（那是 raw）
-        token = session.get('csrf_token_signed')
-        if not token:
-            token = generate_csrf()
-            session['csrf_token_signed'] = token  # 缓存 signed，避免每次响应换新 token 导致并发请求校验失败
-        response.set_cookie('csrf_token', token, samesite='Lax')
+        response.set_cookie('csrf_token', generate_csrf(), samesite='Lax')
         return response
 
     return app
