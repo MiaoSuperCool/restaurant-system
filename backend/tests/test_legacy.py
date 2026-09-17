@@ -426,3 +426,44 @@ def test_legacy_needs_sync_view(app, client, make_staff, login):
     assert client.get('/api/legacy/reconciliations').status_code == 403
     assert client.post('/api/legacy/reconciliations/run',
                        json={'category': 'balance'}).status_code == 403
+
+
+# ---------- seed-demo --reset 的清理顺序 ----------
+
+def test_reset_clears_legacy_tables_before_members(app, as_admin):
+    """`--reset` 要把老系统那三张表**一起**清掉，而且得在会员之前
+
+    不清的话：会员被删了，`LegacyMap` 成了指向空气的孤儿记录；
+    再跑迁移时老号被当成「迁过了」跳过——**储值那笔钱就凭空消失了**。
+    """
+    from decimal import Decimal
+
+    from backend.app.demo import _clear_business_data
+    from backend.app.models import BalanceTxn
+
+    member_id = _member(app)
+    _balance(app, member_id, '100.00')
+    with app.app_context():
+        db.session.add(BalanceTxn(
+            member_id=member_id, type=BalanceTxn.TYPE_MIGRATE,
+            principal_delta=Decimal('100.00'), bonus_delta=Decimal('0'),
+            principal_after=Decimal('100.00'), bonus_after=Decimal('0'),
+        ))
+        db.session.commit()
+
+    with as_admin():
+        LegacyService.bind(LegacyMap.TARGET_MEMBER, member_id, 'M001')
+        LegacyService.record_sync('pull', 'member', 'M001')
+        db.session.commit()
+        _run(app, 'balance')
+
+    with app.app_context():
+        assert Reconciliation.query.count() == 1
+
+    with app.app_context():
+        _clear_business_data()
+
+        assert Member.query.count() == 0
+        assert LegacyMap.query.count() == 0
+        assert SyncRecord.query.count() == 0
+        assert Reconciliation.query.count() == 0

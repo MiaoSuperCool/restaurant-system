@@ -283,6 +283,7 @@ def _clear_business_data():
         Balance,
         BalanceTxn,
         GrouponVoucher,
+        LegacyMap,
         Member,
         Order,
         OrderItem,
@@ -290,8 +291,10 @@ def _clear_business_data():
         Payment,
         Points,
         PointsTxn,
+        Reconciliation,
         Refund,
         RefundTxn,
+        SyncRecord,
         UserCoupon,
     )
 
@@ -301,10 +304,16 @@ def _clear_business_data():
     #
     # **券模板不删**（所以上面没进口 CouponTemplate）：它和菜单一样算「配置」，
     # 清掉的只是发到人手里的券。反正是按名字幂等重建的，重灌一遍就回来了
+    #
+    # **老系统那三张表要删干净**：迁移结果挂在会员身上（`LegacyMap.target_id`、
+    # 储值账户），会员一删它们就成了指向空气的孤儿记录；更糟的是再跑
+    # `import-legacy` 时，映射还在 → 老号被当成「迁过了」跳过 → 储值那笔钱凭空消失。
+    # 所以宁可从零再来一遍：`--reset` 之后把 `import-legacy` 和 `reconcile` 都补跑
     for model in (RefundTxn, Refund, GrouponVoucher, UserCoupon,
                   BalanceTxn, PointsTxn,
                   OrderItemOption, Payment, OrderItem, Order,
                   Balance, Points, Member,
+                  LegacyMap, SyncRecord, Reconciliation,
                   AuditLog):
         model.query.delete()
     db.session.commit()

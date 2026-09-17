@@ -105,7 +105,7 @@ def seed_demo_command(reset):
     注意先后顺序：新建库要先 flask db upgrade → flask seed-rbac → 再灌演示数据。
     """
     if reset:
-        click.confirm('⚠️ --reset 会删掉所有订单和支付记录，确定吗？', abort=True)
+        click.confirm('⚠️ --reset 会删掉所有订单、支付和会员记录，确定吗？', abort=True)
 
     from backend.app.demo import DEMO_PASSWORD, seed_demo
 
@@ -117,6 +117,9 @@ def seed_demo_command(reset):
         f"发出的券 {stats['coupons']}、订单 {stats['orders']}、"
         f"支付 {stats['payments']}"
     )
+    if reset:
+        click.echo('   --reset 把老系统迁过来的会员也清掉了，补跑一遍：')
+        click.echo('     python manage.py import-legacy && python manage.py reconcile')
     if stats['staff']:
         click.echo(f'   演示账号密码统一是 {DEMO_PASSWORD}')
         click.echo('   老板 laoban / 运营 yunying / 财务 caiwu / 店长 dianzhang')
@@ -133,8 +136,8 @@ def import_legacy_command():
 
     幂等：老号迁过了就跳过，可以反复执行。
 
-    **它和 `seed-demo --reset` 是两条线**：--reset 清业务数据，
-    但不清迁移结果（清掉的话「一分不差」就无从谈起了）。
+    `seed-demo --reset` 会把迁移结果一起清掉（迁过来的人就是会员，会员被清了），
+    清完记得把它和 `reconcile` 补跑一遍。
     """
     from backend.app.legacy_import import import_legacy
 
