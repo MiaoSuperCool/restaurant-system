@@ -180,3 +180,22 @@ def test_expired_token_is_rejected(client, app, admin_staff):
     with app.app_context():
         assert token_utils.parse_token(token) is None
     assert client.get('/api/stores', headers=_headers(token)).status_code == 401
+
+
+def test_token_login_works_with_csrf_on(client, app, admin_staff):
+    """**换 token 的登录接口必须豁免 CSRF**——不然小程序连门都进不来
+
+    网页端登录能过 CSRF，是因为它先领了 csrf cookie；小程序没有 cookie 那套东西，
+    这个接口不豁免的话它永远拿不到自己的第一个 token。
+    （这条是拿 curl 打这个接口时发现的：带着 JSON 却没带 csrf_token，被 400 挡了。）
+    """
+    app.config['WTF_CSRF_ENABLED'] = True
+
+    resp = client.post('/api/auth/token',
+                       json={'username': 'admin', 'password': 'Admin123!'})
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()['data']['token']
+
+    # 而**网页端的登录接口照旧要 CSRF**——豁免的是新开的那条通道，不是把所有登录都放开
+    assert client.post('/api/auth',
+                       json={'username': 'admin', 'password': 'Admin123!'}).status_code == 400

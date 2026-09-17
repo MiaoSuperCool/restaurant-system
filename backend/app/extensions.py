@@ -20,22 +20,37 @@ from flask_wtf.csrf import CSRFProtect
 # CSRF 防护,防止跨站请求伪造攻击
 
 class ApiCSRFProtect(CSRFProtect):
-    """带了 Bearer token 的请求不做 CSRF 校验
+    """小程序那条通道上的请求不做 CSRF 校验
 
     CSRF 能成立，靠的是**浏览器会把 cookie 自动带上**——别的站点伪造一个表单，
     受害者的浏览器顺手把 session cookie 一起发过去，服务端就分不清是不是本人。
 
-    Bearer token 没有这个问题：token 存在小程序自己的存储里，别的站点既读不到它，
-    也没法让浏览器「自动带上」它。所以这一类请求上的 CSRF 校验挡的不是攻击，
-    而是小程序自己（它压根没有 cookie，也拿不到 csrf_token）。
+    小程序没有这个前提：它不带 cookie，token 存在自己的存储里，
+    别的站点既读不到也没法让浏览器「自动带上」它。所以这两类请求上的 CSRF 校验
+    挡的不是攻击，而是小程序自己：
 
-    **只在请求确实带了 Bearer 头时跳过**，带 cookie 的网页请求照常校验——
-    浏览器那一边的防护一点没少。
+    1. **带了 `Authorization: Bearer` 的**——登录之后的每一个请求
+    2. **换 token 的那个登录接口**（`/api/auth/token`）——它还没有 token，
+       但也没有 cookie，一样拿不到 csrf_token。不豁免的话小程序**连门都进不来**
+
+    （登录接口豁免会不会被利用？登录 CSRF 的攻击场景是「让受害者的浏览器
+    登进攻击者的账号」，可这个接口不发 cookie、响应也是跨域读不到的，
+    攻击者拿不到任何东西。加上 /api/* 的 CORS 只放行了开发机的来源，
+    别处发过来的请求连预检都过不了。）
+
+    **带 cookie 的网页请求照常校验**——浏览器那一边的防护一点没少。
     """
 
+    # 登录接口本身：它拿不到 csrf_token，只能整个豁免
+    CSRF_FREE_PATHS = {'/api/auth/token'}
+
     def protect(self):
+        from flask import request
+
         from backend.app.utils.token import bearer_token
 
+        if request.path in self.CSRF_FREE_PATHS:
+            return
         if bearer_token() is not None:
             return
         super().protect()
