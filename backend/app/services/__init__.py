@@ -5,10 +5,12 @@ from .category_service import CategoryService
 from .coupon_service import CouponService
 from .dish_service import DishService
 from .groupon_service import GrouponService
+from .legacy_service import LegacyService
 from .member_service import MemberService
 from .order_service import OrderService
 from .points_service import PointsService
 from .public_service import PublicService
+from .reconciliation_service import ReconciliationService
 from .refund_service import RefundService
 from .staff_service import StaffService
 from .store_dish_service import StoreDishService
@@ -22,10 +24,12 @@ __all__ = [
     'CouponService',
     'DishService',
     'GrouponService',
+    'LegacyService',
     'MemberService',
     'OrderService',
     'PointsService',
     'PublicService',
+    'ReconciliationService',
     'RefundService',
     'StaffService',
     'StoreDishService',

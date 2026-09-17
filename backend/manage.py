@@ -123,6 +123,89 @@ def seed_demo_command(reset):
         click.echo('   值班 zhiban / 收银 shouyin / 服务 fuwuyuan / 后厨 houcu')
 
 
+# 从老系统迁移会员和储值
+@cli.command('import-legacy')
+def import_legacy_command():
+    """从老系统迁入会员和储值（模拟数据）
+
+    跑完 `seed-demo` 之后再跑这个：迁移会一条条记下 ID 映射和同步记录，
+    储值流水带上老系统的单号——对账页上那些「账对不对得上」的数就是从这儿来的。
+
+    幂等：老号迁过了就跳过，可以反复执行。
+
+    **它和 `seed-demo --reset` 是两条线**：--reset 清业务数据，
+    但不清迁移结果（清掉的话「一分不差」就无从谈起了）。
+    """
+    from backend.app.legacy_import import import_legacy
+
+    stats = import_legacy()
+    click.echo(
+        f"✅ 老系统迁移完成：新建会员 {stats['created']}、"
+        f"认领已有档案 {stats['claimed']}、跳过（迁过）{stats['skipped']}、"
+        f"失败 {stats['failed']}、迁入储值 ¥{stats['migrated_amount']:.2f}"
+    )
+    if stats['failed']:
+        click.echo('   失败的去「对账」页看同步记录——每一条都写明了原因')
+
+
+# 日结对账
+@cli.command('reconcile')
+@click.option('--date', 'biz_date', default=None, help='业务日期 YYYY-MM-DD，默认昨天')
+@click.option('--category', default=None,
+              type=click.Choice(['balance', 'order']), help='只跑某一类，默认两类都跑')
+def reconcile_command(biz_date, category):
+    """跑一次日结对账：储值（全公司）+ 每家门店的订单
+
+    真实环境里这是**定时任务**（每天凌晨跑前一天的），这个命令就是那个任务本身。
+    页面上也能手工点一下，但日结的常态是没人点——所以它必须能在没有请求上下文、
+    没有登录用户的情况下跑起来（操作人会记成「系统」）。
+
+    对不上不会让命令失败：**它要的是把差异记下来让人看见**，
+    不是自己中止。差异在「对账」页上。
+    """
+    import datetime as dt
+
+    from backend.app.models import Store
+    from backend.app.services import ReconciliationService
+
+    day = (dt.datetime.strptime(biz_date, '%Y-%m-%d').date() if biz_date
+           else dt.date.today() - dt.timedelta(days=1))
+    categories = [category] if category else ['balance', 'order']
+
+    stores = Store.query.order_by(Store.code).all() if 'order' in categories else []
+
+    for name in categories:
+        if name == 'balance':
+            _echo_reconciliation(ReconciliationService.run(day, 'balance'))
+            continue
+        for store in stores:
+            _echo_reconciliation(
+                ReconciliationService.run(day, 'order', store_id=store.id), store.name,
+            )
+
+
+def _echo_reconciliation(record, store_name=None):
+    """把一条对账结论打出来——对得上就一行，对不上就把差异也列出来"""
+    from decimal import Decimal
+
+    from backend.app.models import Reconciliation
+
+    where = store_name or '全公司'
+    label = Reconciliation.CATEGORY_LABELS.get(record.category, record.category)
+    if record.status == 'matched':
+        click.echo(f'✅ {record.biz_date} {where} {label}：'
+                   f'¥{Decimal(record.expected_amount):.2f} 对得上')
+    else:
+        click.echo(f'⚠️  {record.biz_date} {where} {label}：'
+                   f'期望 ¥{Decimal(record.expected_amount):.2f}、'
+                   f'实际 ¥{Decimal(record.actual_amount):.2f}、'
+                   f'差 ¥{Decimal(record.diff_amount):.2f}，'
+                   f'{record.mismatch_count} 处对不上')
+        for item in (record.detail or [])[:5]:
+            who = item.get('member_name') or item.get('order_no') or item.get('member_id')
+            click.echo(f'     {who}：差 ¥{item["diff"]:.2f}')
+
+
 # 重置数据库
 @cli.command('reset-db')
 @click.confirmation_option(prompt='⚠️ 确定要重置数据库吗？所有数据将被删除！')
