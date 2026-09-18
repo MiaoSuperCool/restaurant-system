@@ -107,11 +107,15 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 
 <img src="docs/screenshots/receipt.png" width="420" alt="小票" />
 
-- **顾客小程序** —— 扫码进店 → 浏览菜单 → 选规格 → 下单 → 支付 → 查订单。
+- **顾客小程序** —— 底部四个 tab：**首页（门店介绍 + 近期活动）/ 点餐 / 订单 / 我的**。
   uni-app 一套代码编译到微信小程序 + H5。
   查订单要「单号 + 随机令牌」——单号是可读可猜的，光凭单号能查到别人的订单
 
-<img src="docs/screenshots/mp-menu.png" width="300" alt="小程序点单" />
+  **门店存在本地**：改成了常驻 tab 之后，点餐页得知道自己点的是哪家店，
+  首页那张卡片负责显示和切换（换店会清空购物车——A 店点的菜到了 B 店可能没有）
+
+<img src="docs/screenshots/mp-home.png" width="300" alt="小程序首页" />
+<img src="docs/screenshots/mp-menu.png" width="300" alt="小程序点餐" />
 <img src="docs/screenshots/mp-picker.png" width="300" alt="规格选择" />
 
 - **顾客端会员**（二期）—— 手机号 + 验证码，**登录即注册**（第一次登录自动建档，
@@ -123,6 +127,10 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
   认证走的是**员工那条 token 通道的姊妹版**：同一套签名，
   但载荷里带 `typ` 区分——员工的 token 拿去调顾客接口会被拒，反之亦然
   （两张表的 id 都是自增的，不判类型会认错人）
+
+  **首页的「近期活动」不需要登录**（后端那个接口是 `member_optional`）：
+  「这家店有什么活动」本来就是公开信息，一进首页就是登录墙太难看。
+  点「领取」的时候才要求登录——券得挂在人头上
 
 - **券中心**（二期）—— 顾客自己领券，模板上带「可领取」和「每人限领 N 张」。
   **领不到的券也列出来并写明原因**（「每人限领 2 张」「已经被领完了」）——
