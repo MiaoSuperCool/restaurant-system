@@ -45,8 +45,16 @@ def _serve_spa(dist_dir, path=''):
         )), 404
     target = os.path.join(dist_dir, path)
     if path and os.path.isfile(target):
+        # 带 hash 的静态资源可以让浏览器放心缓存（改一次文件名就变了）
         return send_from_directory(dist_dir, path)
-    return send_from_directory(dist_dir, 'index.html')
+
+    # **index.html 不缓存**：它的文件名永远是 index.html。
+    # 浏览器要是把它缓存住了，重新部署之后用户看到的还是旧页面——
+    # 表现是「我明明改了，怎么没生效」，得手动强刷才行。
+    # 一个几 KB 的 HTML，每次回服务器拿一次不亏。
+    resp = send_from_directory(dist_dir, 'index.html')
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 def register_frontend_routes(app):
