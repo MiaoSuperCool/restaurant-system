@@ -20,12 +20,15 @@ services:
       # 括号中是compose的变量语法：从宿主机环境变量或 compose 同目录的.env 文件读取 DB_PASSWORD
       # 如果没设置就用 :- 后面的默认值
       MYSQL_DATABASE: ${DB_NAME:-restaurant_system}
-    ports:
-      - "127.0.0.1:3306:3306"
-      # 只绑本机：本地用客户端连进去调试时照样连得上（127.0.0.1:3306），
-      # 但**公网上连不到**。原来写的是 "3306:3306"，那是绑 0.0.0.0——
-      # 放到云服务器上就等于把 MySQL 开到公网，端口一扫就有人来试密码，
-      # 而演示环境的数据库密码通常就写在 .env 里，很弱
+    # **故意不把 3306 映射到宿主机。** 两个原因：
+    #
+    # 1. 安全：原来写的是 "3306:3306"（绑 0.0.0.0），放云服务器上等于把数据库
+    #    开到公网，端口一扫就有人来试密码，而演示环境的 DB_PASSWORD 通常很弱
+    # 2. 兼容：VPS 上预装 MySQL、或者本机开发也开着 MySQL（都占 3306）是很常见的，
+    #    映射过去就会 "address already in use"，容器直接起不来——**实机踩过**
+    #
+    # 要在服务器上连进去看数据，用这条（不用对外开放端口）：
+    #   docker compose exec db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" restaurant_system'
     volumes:
       - mysql_data:/var/lib/mysql
       # /var/lib/mysql 是 MySQL 镜像里存数据的目录。如果不用卷，容器一删，整个数据库全没（docker compose
