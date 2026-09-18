@@ -95,6 +95,7 @@ describe('Sidebar 菜单按权限渲染', () => {
     loginAs(true, [])
     expect(await menuTexts()).toEqual([
       '主页面',
+      '报表',
       '点单',
       '订单',
       '退款',
@@ -110,6 +111,16 @@ describe('Sidebar 菜单按权限渲染', () => {
       '对账',
       '审计日志',
     ])
+  })
+
+  it('报表要 report:store / report:all，收银员看不到经营数据', async () => {
+    // 收银员天天看订单，但「哪道菜卖了多少、一天做多少生意」不该给他
+    loginAs(false, ['order:view', 'menu:view'])
+    expect(await menuTexts()).toEqual(['主页面', '订单'])
+
+    // 店长只有 report:store（本店范围），照样看得到
+    loginAs(false, ['order:view', 'report:store'])
+    expect(await menuTexts()).toEqual(['主页面', '报表', '订单'])
   })
 
   it('对账是 sync:view，收银员看不到', async () => {

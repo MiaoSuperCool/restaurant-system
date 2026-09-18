@@ -52,8 +52,8 @@ class OrderService:
 
     @staticmethod
     def assert_store_in_scope(store_id):
-        allowed = current_user.accessible_store_ids()
-        if allowed is not None and store_id not in allowed:
+        # 规则在 `Staff.can_access_store` 里，这里只负责换成订单该说的话
+        if not current_user.can_access_store(store_id):
             raise BusinessError('无权操作其他门店的订单', status_code=403)
 
     @staticmethod

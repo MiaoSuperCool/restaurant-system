@@ -130,6 +130,17 @@ class Staff(UserMixin, BaseModel):
             return None
         return [self.store_id] if self.store_id is not None else []
 
+    def can_access_store(self, store_id):
+        """这家店的数据我能不能碰
+
+        「能不能碰哪些数据」这条规则**只有这一处实现**。各个 service 里那些
+        `assert_store_in_scope` 都是它加一句人话——那边的差别只在报错文案
+        （「无权操作其他门店的订单」/「无权查看其他门店的报表」），
+        规则本身写几遍迟早有一遍漏掉。
+        """
+        allowed = self.accessible_store_ids()
+        return allowed is None or store_id in allowed
+
     def to_dict(self):
         return {
             'id': self.id,

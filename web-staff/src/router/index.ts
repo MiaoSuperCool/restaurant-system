@@ -20,6 +20,14 @@ const router = createRouter({
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         {
+          path: 'reports',
+          name: 'reports',
+          component: () => import('@/views/ReportsView.vue'),
+          // 店长有 report:store、老板/运营/财务有 report:all，任一即可进。
+          // **看到哪几家由数据范围决定**，不由这个码决定
+          meta: { permissions: ['report:store', 'report:all'] },
+        },
+        {
           path: 'new-order',
           name: 'new-order',
           component: () => import('@/views/NewOrderView.vue'),

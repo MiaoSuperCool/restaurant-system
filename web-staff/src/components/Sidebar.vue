@@ -16,6 +16,8 @@ const router = useRouter()
  */
 const ALL_MENUS = [
   { name: '主页面', path: '/', permissions: [] as string[] },
+  // 报表紧跟主页面：都是「看数」的入口，而且店长/老板一上来就是看这个
+  { name: '报表', path: '/reports', permissions: ['report:store', 'report:all'] },
   // 点单和订单放前面：收银员一天到晚开着的就是这两页
   { name: '点单', path: '/new-order', permissions: ['order:create'] },
   { name: '订单', path: '/orders', permissions: ['order:view'] },
