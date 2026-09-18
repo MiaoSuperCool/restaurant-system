@@ -32,7 +32,10 @@
       <view v-if="canViewOrder" class="entry" @tap="go('/pages/order/list')">
         <text class="entry-title">{{ canReceive ? '接单 / 出单' : '看单' }}</text>
         <text class="entry-sub">
-          {{ canReceive ? '接单、完成后到收款' : '实时刷新，看本店还有哪些单没做' }}
+          <!-- 老板/运营是全部范围，看到的是**各店**的单；一线的人只看本店 -->
+          {{ canReceive ? '接单、完成后到收款'
+            : dataScope === 'all' ? '实时刷新，看各家店还有哪些单没做'
+            : '实时刷新，看本店还有哪些单没做' }}
         </text>
       </view>
 
@@ -80,6 +83,8 @@ const canReceive = computed(() => hasPermission('order:receive'))
 const canVerify = computed(() => hasPermission('coupon:verify'))
 // 看数的入口：店长（本店）和老板（全公司）有，收银员/服务员没有
 const canSeeReport = computed(() => hasAnyPermission('report:store', 'report:all'))
+// 老板是全部范围，界面上几处「本店」的说法对他不成立
+const dataScope = computed(() => authState.data_scope)
 
 async function loadHome() {
   try {
