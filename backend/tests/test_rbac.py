@@ -56,6 +56,36 @@ def test_role_hierarchy_is_superset():
     assert perms('shift_manager') <= perms('store_manager'), '店长应该是值班经理的超集'
 
 
+def test_manage_implies_view():
+    """**能管就必须能看**：有 `xxx:manage` 的角色，`xxx:view` 不能缺席
+
+    前端的菜单和路由是按 `xxx:view` 决定显不显示的（`router/index.ts` 里
+    的 `meta.permissions`），所以只给 manage 不给 view 的角色会
+    **看不到自己有权管的那个页面**——「老板看不到报表」就是这么来的。
+
+    这是个通用不变量，所以这里列成表逐对检查，加新模块时顺手加一行。
+    """
+    # (能看的码, [管了就必须能看的那些码])
+    pairs = [
+        ('schedule:view', ['schedule:manage']),
+        ('stock:view', ['stock:manage']),
+        ('menu:view', ['menu:create', 'menu:update', 'menu:delete',
+                       'dish:price:edit', 'dish:online']),
+        ('order:view', ['order:create', 'order:receive', 'order:cancel', 'pay:collect']),
+        ('refund:view', ['refund:apply', 'refund:approve', 'refund:approve:large']),
+        ('member:balance:view', ['member:balance:recharge']),
+    ]
+
+    for spec in ROLES:
+        granted = set(spec['permissions'])
+        for view_code, manage_codes in pairs:
+            managed = granted & set(manage_codes)
+            assert not managed or view_code in granted, (
+                f"角色「{spec['name']}」有 {sorted(managed)} 却没有 {view_code}——"
+                f'他会看不到自己有权管的那个页面'
+            )
+
+
 def test_every_role_permission_code_exists():
     """角色矩阵里写错权限码要在代码层面就拦住，不能等到运行时少给一个权限"""
     known = {code for code, _, _ in PERMISSIONS}

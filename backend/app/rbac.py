@@ -23,6 +23,9 @@ PERMISSIONS = [
     ('store:manage', '门店管理（增删门店）', '组织与账号'),
     ('staff:manage', '本店员工账号管理（含兼职开停）', '组织与账号'),
     ('staff:manage:all', '全公司账号管理（店长/总部账号）', '组织与账号'),
+    # 看班表和排班分开：能看的人不止店长——服务员得知道自己哪天来上班。
+    # 但「能看」不等于「能改」，改排班是店长的活
+    ('schedule:view', '排班查看', '组织与账号'),
     ('schedule:manage', '排班管理', '组织与账号'),
     ('system:config', '系统配置', '组织与账号'),
 
@@ -90,8 +93,9 @@ def permission_name(code):
 # 角色是不同权限的集合
 # data_scope：store = 只能碰本店数据，all = 6 家店都能碰。
 
-# 一线员工看菜单是干活的前提（点单、出单都要先看菜），所以前厅后厨都给 menu:view
-_FRONT_LINE_MENU = ['menu:view']
+# 一线员工的两项「前提」：看菜单（点单、出单都要先看菜）、看班表（得知道自己
+# 哪天来上班），所以前厅后厨都给。两个都只是**看**，不涉及任何操作
+_FRONT_LINE_PERMISSIONS = ['menu:view', 'schedule:view']
 
 # 收银员的权限集合，值班经理和店长都是它的超集，抽出来避免三处各写一遍
 _CASHIER_PERMISSIONS = [
@@ -99,8 +103,10 @@ _CASHIER_PERMISSIONS = [
     'pay:collect', 'coupon:verify',
     # 收银台要能查顾客余额（不然没法告诉他还能抵多少），也要能给他充卡
     'member:balance:view', 'member:balance:recharge',
-    'refund:apply',
-    *_FRONT_LINE_MENU,
+    # 发起退款的人必须能看见退款单：不然他提了申请，连批没批都查不到
+    # （退款页是按 refund:view 决定显不显示的）
+    'refund:apply', 'refund:view',
+    *_FRONT_LINE_PERMISSIONS,
 ]
 
 # 值班经理 = 收银员 + 顶班时多出来的那几项
@@ -119,14 +125,14 @@ ROLES = [
         'name': '服务员',
         'description': '代客点单，看本店订单',
         'data_scope': 'store',
-        'permissions': ['order:create', 'order:view', *_FRONT_LINE_MENU],
+        'permissions': ['order:create', 'order:view', *_FRONT_LINE_PERMISSIONS],
     },
     {
         'code': 'kitchen',
         'name': '后厨',
         'description': '本店出单',
         'data_scope': 'store',
-        'permissions': ['order:view', *_FRONT_LINE_MENU],
+        'permissions': ['order:view', *_FRONT_LINE_PERMISSIONS],
     },
     {
         'code': 'cashier',
@@ -206,7 +212,7 @@ ROLES = [
             # 组织与账号
             'store:view', 'store:manage',
             'staff:manage', 'staff:manage:all',
-            'schedule:manage', 'system:config',
+            'schedule:view', 'schedule:manage', 'system:config',
 
             # 菜单与菜品：配菜单、定价（这是**配置**，不是柜台操作）
             'menu:view', 'menu:create', 'menu:update', 'menu:delete',
