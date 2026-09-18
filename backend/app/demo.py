@@ -19,7 +19,7 @@ current_user 会直接抛异常。所以这里是直接建模型对象。
 """
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,10 @@ STAFF = [
     # 公用账号：服务员共用一台设备登录，下单时选「实际操作人」
     ('gongyong', '前厅公用账号', 'waiter', 'S001', 'full_time', True),
     ('houcu', '周后厨', 'kitchen', 'S001', 'full_time', False),
+    # 武林门店也放两个人：排班是**门店级**的，只有一家店有人的话，
+    # 老板切到别的门店看到的是空表，看不出「每家店排各家的班」
+    ('wulin_dianzhang', '吴店长', 'store_manager', 'S003', 'full_time', False),
+    ('wulin_fuwuyuan', '郑服务', 'waiter', 'S003', 'part_time', False),
 ]
 
 # 菜品配图：路径相对前端的 public/（web-staff 直接拿它当卡片背景）
@@ -262,6 +266,35 @@ ORDERS = [
 ]
 
 
+SHIFT_TEMPLATES = {
+    # 门店类型 → 这家店约定俗成的几个班（都是「小时:分钟」）
+    # 之所以按门店类型分：**班次是门店级的**——快餐店 07:30 就开门，
+    # 堂食大店 10 点才备完料，同一个「早班」在两家店不是一个时间
+    'dine_in': [
+        ('早班', '09:30', '14:00'),
+        ('晚班', '16:30', '21:30'),
+        ('全班', '10:00', '20:00'),
+    ],
+    'fast_food': [
+        ('早班', '07:30', '13:00'),
+        ('晚班', '13:00', '20:30'),
+        ('全班', '08:00', '17:00'),
+    ],
+}
+
+# 一周的班表：角色 → 周一到周日各上什么班
+# `''` = 休息；一天两个班用 `+` 连（餐饮的「两头班」：早上备菜、中午歇、晚上再来）
+# 规律是有意的——店长上早班、值班经理顶晚班、服务员周末最忙两头班。
+# 演示时一眼能看出「谁周末在、谁休息」
+SCHEDULE_BY_ROLE = {
+    'store_manager': ['早班', '早班', '早班', '早班', '早班', '', ''],
+    'shift_manager': ['晚班', '晚班', '晚班', '晚班', '晚班', '晚班', ''],
+    'cashier': ['全班', '全班', '', '全班', '全班', '全班', '全班'],
+    'waiter': ['', '晚班', '晚班', '晚班', '晚班', '早班+晚班', '早班+晚班'],
+    'kitchen': ['早班', '早班', '早班', '早班', '早班', '晚班', '晚班'],
+}
+
+
 DEMO_REFUNDS = [
     # 挂在第几笔订单上（ORDERS 的下标）、退款比例（1 = 全退）、原因、类型、走到哪一步
     # 三种状态各留一个，退款页打开就有东西看
@@ -313,6 +346,7 @@ def _clear_business_data():
         Reconciliation,
         Refund,
         RefundTxn,
+        ShiftAssignment,
         SyncRecord,
         UserCoupon,
     )
@@ -321,6 +355,9 @@ def _clear_business_data():
     # 资产流水 → 订单 → 资产账户 → 会员——`order.member_id` 是 RESTRICT，
     # 订单没删完就删不掉会员。
     #
+    # **排班要清、班次模板不清**：和券模板、菜单一个道理——班次是配置，
+    # 排班是业务数据。反正排班是按周幂等重建的，重灌一遍就回来了。
+    #
     # **券模板不删**（所以上面没进口 CouponTemplate）：它和菜单一样算「配置」，
     # 清掉的只是发到人手里的券。反正是按名字幂等重建的，重灌一遍就回来了
     #
@@ -328,7 +365,7 @@ def _clear_business_data():
     # 储值账户），会员一删它们就成了指向空气的孤儿记录；更糟的是再跑
     # `import-legacy` 时，映射还在 → 老号被当成「迁过了」跳过 → 储值那笔钱凭空消失。
     # 所以宁可从零再来一遍：`--reset` 之后把 `import-legacy` 和 `reconcile` 都补跑
-    for model in (RefundTxn, Refund, GrouponVoucher, UserCoupon,
+    for model in (ShiftAssignment, RefundTxn, Refund, GrouponVoucher, UserCoupon,
                   BalanceTxn, PointsTxn,
                   OrderItemOption, Payment, OrderItem, Order,
                   Balance, Points, Member,
@@ -409,6 +446,8 @@ def seed_demo(reset=False):
         Refund,
         RefundTxn,
         Role,
+        ShiftAssignment,
+        ShiftTemplate,
         Staff,
         Store,
         StoreDish,
@@ -421,7 +460,8 @@ def seed_demo(reset=False):
 
     stats = {'stores': 0, 'categories': 0, 'dishes': 0, 'staff': 0, 'members': 0,
              'overrides': 0, 'coupon_templates': 0, 'coupons': 0,
-             'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0}
+             'orders': 0, 'payments': 0, 'refunds': 0, 'groupons': 0,
+             'shifts': 0, 'assignments': 0}
 
     # ---------- 门店 ----------
     stores_by_code = {}
@@ -519,6 +559,59 @@ def seed_demo(reset=False):
     db.session.flush()
 
     staff_by_username = {s.username: s for s in Staff.query.all()}
+
+    # ---------- 班次 ----------
+    # 班次是**配置**（和菜单、券模板一类）：按门店 + 名字幂等认领，
+    # --reset 也不清——排班清掉了，班次还该在，不然每次重置都要重配一遍
+    shifts_by_store = {}
+    for store in stores_by_code.values():
+        defined = SHIFT_TEMPLATES.get(store.store_type) or SHIFT_TEMPLATES['dine_in']
+        shifts_by_store[store.code] = {}
+        for sort_order, (name, start, end) in enumerate(defined):
+            shift = ShiftTemplate.query.filter_by(store_id=store.id, name=name).first()
+            if not shift:
+                shift = ShiftTemplate(store_id=store.id, name=name)
+                db.session.add(shift)
+                stats['shifts'] += 1
+            # 时间每次写回定义里的值：改了 SHIFT_TEMPLATES 再跑一遍就同步过去了
+            shift.start_time = datetime.strptime(start, '%H:%M').time()
+            shift.end_time = datetime.strptime(end, '%H:%M').time()
+            shift.sort_order = sort_order
+            shifts_by_store[store.code][name] = shift
+    db.session.flush()
+
+    # ---------- 排班（本周 + 下周）----------
+    # **只给真人排**：`is_shared` 那台设备背后不是一个具体的人，排它没意义
+    #
+    # 按角色套 SCHEDULE_BY_ROLE。排两周是因为「排班」这个页面要能翻页——
+    # 只排本周的话点「下一周」就是一片空白，看不出这是个能用的功能
+    store_code_by_id = {store.id: code for code, store in stores_by_code.items()}
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    for staff in Staff.query.filter(Staff.store_id.isnot(None),
+                                    Staff.is_shared.is_(False)).all():
+        role_code = next((r.code for r in staff.roles if r.code in SCHEDULE_BY_ROLE), None)
+        if role_code is None:
+            continue
+        shifts = shifts_by_store.get(store_code_by_id.get(staff.store_id), {})
+        for week in (0, 1):
+            for offset, spec in enumerate(SCHEDULE_BY_ROLE[role_code]):
+                work_date = week_start + timedelta(days=week * 7 + offset)
+                for shift_name in filter(None, spec.split('+')):
+                    shift = shifts.get(shift_name)
+                    if shift is None:
+                        continue
+                    exists = ShiftAssignment.query.filter_by(
+                        staff_id=staff.id, work_date=work_date, shift_id=shift.id,
+                    ).first()
+                    if exists:
+                        continue
+                    db.session.add(ShiftAssignment(
+                        store_id=staff.store_id, staff_id=staff.id,
+                        shift_id=shift.id, work_date=work_date,
+                    ))
+                    stats['assignments'] += 1
+    db.session.flush()
+
     option_ids = {
         (dish.name, option.name): option.id
         for dish in Dish.query.all()

@@ -48,21 +48,73 @@ def test_seed_demo_runs_end_to_end(app):
         assert Order.query.filter(Order.paid_amount > 0).count() > 0
 
 
-def test_seed_demo_is_idempotent(app):
-    """基础数据反复灌不会重复建（订单按设计每次新增）"""
-    from backend.app.models import Dish, Staff, Store
+def test_seed_demo_schedules_two_weeks(app):
+    """班次和排班：每家店一套班次，真人各排两周
+
+    排两周是**有意的**——「排班」页面要能翻页，只排本周的话点「下一周」
+    是一片空白，看不出这是个能用的功能。
+    """
+    from datetime import date, timedelta
+
+    from backend.app.models import ShiftAssignment, ShiftTemplate, Staff
 
     with app.app_context():
-        seed_demo()
+        stats = seed_demo()
+
+        assert stats['shifts'] == len(STORES) * 3          # 每家店三个班次
+        # **公用账号不排班**：那台设备背后不是一个具体的人
+        shared_ids = {s.id for s in Staff.query.filter(Staff.is_shared.is_(True)).all()}
+        assert not (ShiftAssignment.query
+                    .filter(ShiftAssignment.staff_id.in_(shared_ids)).count())
+
+        week_start = date.today() - timedelta(days=date.today().weekday())
+        dates = {a.work_date for a in ShiftAssignment.query.all()}
+        assert min(dates) == week_start
+        assert max(dates) == week_start + timedelta(days=13)
+
+        # 两头班真的排出来了（一天两个班），不然那个格子演示不了
+        counts = {}
+        for item in ShiftAssignment.query.all():
+            counts[(item.staff_id, item.work_date)] = counts.get((item.staff_id, item.work_date), 0) + 1
+        assert max(counts.values()) == 2
+
+        # 班次时间没被写成空——排班表上显示的是「09:30-14:00」
+        morning = ShiftTemplate.query.filter_by(name='早班').first()
+        assert morning.start_time.strftime('%H:%M') == '09:30'
+
+
+def test_seed_demo_is_idempotent(app):
+    """基础数据反复灌不会重复建（订单按设计每次新增）"""
+    from backend.app.models import Dish, ShiftAssignment, ShiftTemplate, Staff, Store
+
+    with app.app_context():
+        first = seed_demo()
         second = seed_demo()
 
         assert second['stores'] == 0
         assert second['categories'] == 0
         assert second['dishes'] == 0
         assert second['staff'] == 0
+        # 班次和排班也是幂等的——不然反复跑会把同一周排上几十遍
+        assert second['shifts'] == 0
+        assert second['assignments'] == 0
+        assert ShiftAssignment.query.count() == first['assignments']
+        assert ShiftTemplate.query.count() == first['shifts']
         assert Store.query.count() == len(STORES)
         assert Dish.query.count() == len(DISHES)
         assert Staff.query.filter(Staff.username != 'admin').count() == len(STAFF)
+
+
+def test_seed_demo_reset_clears_schedule_but_keeps_shifts(app):
+    """--reset 清排班、**不清班次**——班次是配置（和菜单、券模板一类）"""
+    from backend.app.models import ShiftAssignment, ShiftTemplate
+
+    with app.app_context():
+        first = seed_demo()
+        seed_demo(reset=True)
+
+        assert ShiftAssignment.query.count() == first['assignments']
+        assert ShiftTemplate.query.count() == first['shifts']   # 没被删掉
 
 
 def test_seed_demo_reset_clears_orders(app):

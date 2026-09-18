@@ -187,3 +187,33 @@ export interface ReportOverview {
   by_method: ReportMethodRow[]
   top_dishes: ReportDishRow[]
 }
+
+/** 我的班表里的一条排班 */
+export interface MyShift {
+  id: number
+  shift_id: number
+  shift_name: string
+  shift_time_range: string
+  work_date: string
+  remark: string
+}
+
+/**
+ * 我接下来哪天上班
+ *
+ * **只返回有班的日子**（休息的日子列出来只会刷屏）。
+ * `relative` 是后端算好的「今天 / 明天」，不用前端再判一次——
+ * 两边各算一遍，遇到时区或者跨零点就会不一致。
+ */
+export interface MySchedule {
+  start: string
+  end: string
+  days: {
+    date: string
+    weekday: string
+    relative: string
+    shifts: MyShift[]
+  }[]
+  /** 一共多少个班（两头班算两个） */
+  total: number
+}

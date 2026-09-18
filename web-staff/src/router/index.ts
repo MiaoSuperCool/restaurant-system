@@ -100,6 +100,14 @@ const router = createRouter({
           meta: { permissions: MENU_STORE_PERMISSIONS },
         },
         {
+          path: 'schedule',
+          name: 'schedule',
+          component: () => import('@/views/ScheduleView.vue'),
+          // 看和排是两个码：一线员工也有 schedule:view（得知道自己哪天来），
+          // 但格子对他们是只读的。改排班要 schedule:manage，后端拦得更死
+          meta: { permissions: ['schedule:view'] },
+        },
+        {
           path: 'staff',
           name: 'staff',
           component: () => import('@/views/StaffView.vue'),

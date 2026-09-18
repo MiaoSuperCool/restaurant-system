@@ -35,6 +35,12 @@
       "style": {
         "navigationBarTitleText": "经营"
       }
+    },
+    {
+      "path": "pages/schedule/mine",
+      "style": {
+        "navigationBarTitleText": "我的班表"
+      }
     }
   ],
   "globalStyle": {

@@ -33,6 +33,8 @@ const ALL_MENUS = [
   { name: '菜品', path: '/dishes', permissions: MENU_COMPANY_PERMISSIONS },
   { name: '分类', path: '/categories', permissions: MENU_COMPANY_PERMISSIONS },
   { name: '门店菜单', path: '/store-menu', permissions: MENU_STORE_PERMISSIONS },
+  // 排班放在员工上面：都是「管人」的事，而且排班天天要用，员工资料很少动
+  { name: '排班', path: '/schedule', permissions: ['schedule:view'] },
   { name: '员工', path: '/staff', permissions: ['staff:manage', 'staff:manage:all'] },
   // 角色矩阵放在员工旁边：给人分配角色的时候要知道这个角色能干什么
   { name: '角色', path: '/roles', permissions: ['staff:manage', 'staff:manage:all'] },

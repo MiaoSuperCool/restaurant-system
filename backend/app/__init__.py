@@ -120,6 +120,7 @@ def register_blueprints(app):
         refunds,
         reports,
         roles,
+        schedule,
         staff,
         store_dish,
         stores,
@@ -172,6 +173,7 @@ def register_blueprints(app):
     api.register_blueprint(orders.bp)  # /api/orders
     api.register_blueprint(refunds.bp)  # /api/refunds
     api.register_blueprint(reports.bp)  # /api/reports（经营报表）
+    api.register_blueprint(schedule.bp)  # /api/schedule（班次 + 一周班表 + 我的班表）
     api.register_blueprint(public.bp)  # /api/public/*（顾客端，不鉴权）
     api.register_blueprint(public_auth.bp)   # /api/public/auth/*（顾客登录，登录即注册）
     api.register_blueprint(public_member.bp)  # /api/public/me*、/coupons（顾客登录后）

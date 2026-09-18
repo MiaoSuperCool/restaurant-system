@@ -115,7 +115,8 @@ def seed_demo_command(reset):
         f"菜品 {stats['dishes']}、账号 {stats['staff']}、会员 {stats['members']}、"
         f"门店定价 {stats['overrides']}、券模板 {stats['coupon_templates']}、"
         f"发出的券 {stats['coupons']}、订单 {stats['orders']}、"
-        f"支付 {stats['payments']}"
+        f"支付 {stats['payments']}、班次 {stats['shifts']}、"
+        f"排班 {stats['assignments']}"
     )
     if reset:
         click.echo('   --reset 把老系统迁过来的会员也清掉了，补跑一遍：')
@@ -124,6 +125,7 @@ def seed_demo_command(reset):
         click.echo(f'   演示账号密码统一是 {DEMO_PASSWORD}')
         click.echo('   老板 laoban / 运营 yunying / 财务 caiwu / 店长 dianzhang')
         click.echo('   值班 zhiban / 收银 shouyin / 服务 fuwuyuan / 后厨 houcu')
+        click.echo('   武林门店 吴店长 wulin_dianzhang / 郑服务 wulin_fuwuyuan')
 
 
 # 从老系统迁移会员和储值

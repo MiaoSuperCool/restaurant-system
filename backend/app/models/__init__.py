@@ -14,6 +14,7 @@ from .permission import Permission
 from .points import Points, PointsTxn
 from .refund import Refund, RefundTxn
 from .role import Role
+from .schedule import ShiftAssignment, ShiftTemplate
 from .staff import Staff
 from .store import Store
 from .store_dish import StoreDish
@@ -25,6 +26,8 @@ __all__ = [
     'Store',
     'StoreDish',
     'Role',
+    'ShiftTemplate',
+    'ShiftAssignment',
     'Permission',
     'Category',
     'Dish',

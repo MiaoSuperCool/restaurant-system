@@ -44,6 +44,13 @@
         <text class="entry-sub">美团 / 抖音买的券，抵这一单的钱</text>
       </view>
 
+      <!-- 我的班表：一线员工最常用的一个入口——「我明天几点来」
+           排班是店长在电脑上排的，手机上只看自己那份 -->
+      <view v-if="canViewSchedule" class="entry" @tap="go('/pages/schedule/mine')">
+        <text class="entry-title">我的班表</text>
+        <text class="entry-sub">接下来哪天上班、几点到几点</text>
+      </view>
+
       <!-- 第四个入口只给店长和老板看：一线的人不需要「今天做了多少生意」，
            而且这个数也不该给他们（后端要 report:store / report:all） -->
       <view v-if="canSeeReport" class="entry" @tap="go('/pages/report/report')">
@@ -81,6 +88,8 @@ const canCreateOrder = computed(() => hasPermission('order:create'))
 const canViewOrder = computed(() => hasPermission('order:view'))
 const canReceive = computed(() => hasPermission('order:receive'))
 const canVerify = computed(() => hasPermission('coupon:verify'))
+// 我的班表：**一线员工也有**（排班是店长的活，看自己哪天上班是人人都要的）
+const canViewSchedule = computed(() => hasPermission('schedule:view'))
 // 看数的入口：店长（本店）和老板（全公司）有，收银员/服务员没有
 const canSeeReport = computed(() => hasAnyPermission('report:store', 'report:all'))
 // 老板是全部范围，界面上几处「本店」的说法对他不成立

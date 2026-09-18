@@ -14,6 +14,7 @@ from .public_service import PublicService
 from .reconciliation_service import ReconciliationService
 from .refund_service import RefundService
 from .report_service import ReportService
+from .schedule_service import ScheduleService
 from .staff_service import StaffService
 from .store_dish_service import StoreDishService
 from .store_service import StoreService
@@ -35,6 +36,7 @@ __all__ = [
     'ReconciliationService',
     'RefundService',
     'ReportService',
+    'ScheduleService',
     'StaffService',
     'StoreDishService',
     'StoreService',
