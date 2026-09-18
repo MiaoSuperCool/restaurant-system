@@ -190,7 +190,13 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
   服务员只有代客点单、**后厨只有看单**——他没有 `order:receive`，
   订单页显示成「只读」，见 `mp-staff/README.md` 里那节说明
 
+  **店长和老板还多一个「经营」**（`report:store` / `report:all`）：
+  汇总 + 趋势 + 门店对比的精简版。一线的人不需要「今天做了多少生意」，
+  而这个数也不该给他们。**总部账号要在点单页挑一家店**——
+  老板不归属任何门店，电脑端一直有那个选择器，小程序端一开始漏了
+
 <img src="docs/screenshots/mp-staff-orders.png" width="300" alt="员工端：出单" />
+<img src="docs/screenshots/mp-staff-report.png" width="300" alt="员工端：经营" />
 
 - **经营报表**（三期）—— **一个接口两个角色**：店长看本店、老板看全公司，
   差别只在数据范围（`report:store` / `report:all` 是「能不能看报表」，
