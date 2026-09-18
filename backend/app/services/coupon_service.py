@@ -316,12 +316,14 @@ class CouponService:
     def _claimed_counts(member_id, template_ids):
         """这个人在这些模板上各领过几张
 
+        `member_id` 为空 = 没登录，一律按 0 算（见 `get_claimable_templates`）
+
         **一次查完**，不要在循环里逐个 count——券中心一屏十几张券，
         那就是十几次查询。这和别处「人数撑死几十个，逐条过 check() 更好读」
         的判断不一样：这里是**按模板**查，模板数固定且会随运营增长，
         而且这个计数是纯 SQL 就能表达的（没有过期那类"算出来"的状态）
         """
-        if not template_ids:
+        if not member_id or not template_ids:
             return {}
         rows = (db.session.query(UserCoupon.template_id, func.count(UserCoupon.id))
                 .filter(UserCoupon.member_id == member_id,
@@ -336,6 +338,9 @@ class CouponService:
 
         **连不能领的也返回**（带 `blocked_reason`），理由见
         `_claim_blocked_reason`。
+
+        `member_id` 传 None = 游客：券照列，`claimed_count` 一律 0。
+        顾客端首页把它当「近期活动」用，不进登录墙（见 `member_optional`）。
         """
         templates = (CouponTemplate.query
                      .filter(CouponTemplate.is_claimable.is_(True))

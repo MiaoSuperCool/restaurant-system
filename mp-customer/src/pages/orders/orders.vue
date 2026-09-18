@@ -84,7 +84,10 @@ function openDetail(record: OrderRecord) {
 }
 
 function goHome() {
-  uni.reLaunch({ url: '/pages/index/index' })
+  // 首页现在是底部 tab 之一：**switchTab 而不是 reLaunch**——
+  // reLaunch 会把整个页面栈清掉再打开首页，等于用户按不了返回；
+  // switchTab 才是「切到那个 tab」该有的动作
+  uni.switchTab({ url: '/pages/index/index' })
 }
 
 // onShow 而不是 onMounted：从详情页返回时状态可能已经变了，要重新拉

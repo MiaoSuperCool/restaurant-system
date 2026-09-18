@@ -192,11 +192,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { createOrder, getMenu } from '@/api/public'
 import type { DishOptionGroup, MenuRow } from '@/api/types'
 import { addToCart, cart, cartCount, cartTotal, changeQuantity, clearCart } from '@/stores/cart'
+import { currentStoreId, storeState } from '@/stores/currentStore'
 import { saveOrder } from '@/stores/myOrders'
 import { formatPrice } from '@/utils/format'
 
@@ -403,7 +404,8 @@ async function handleSubmit() {
 }
 
 function goMyOrders() {
-  uni.navigateTo({ url: '/pages/orders/orders' })
+  // 订单页现在是底部 tab 之一，**必须用 switchTab**（navigateTo 打不开 tab 页）
+  uni.switchTab({ url: '/pages/orders/orders' })
 }
 
 async function loadMenu() {
@@ -418,14 +420,31 @@ async function loadMenu() {
   }
 }
 
-onLoad((query) => {
-  storeId.value = Number(query?.storeId || 0)
-  storeName.value = decodeURIComponent(query?.storeName || '')
-  // 换了门店就清空购物车：在 A 店点的菜到了 B 店可能没有、价格也不一样
-  if (cart.storeId !== storeId.value) {
+/**
+ * 门店从「当前门店」读，不从页面参数读
+ *
+ * 以前是「首页选店 → 带着 storeId 跳过来」，改成底部 tab 之后没有那次跳转了，
+ * 门店存在本地（见 `stores/currentStore.ts`）。
+ *
+ * **用 onShow 不用 onLoad**：tab 页面切走再切回来不会重新 onLoad，
+ * 但顾客可能刚在首页把门店换成了另一家——不重读的话，这一页还停在旧店的菜单上。
+ */
+onShow(() => {
+  const id = currentStoreId()
+  if (!id) {
+    // 一家店都没选（正常进不来，首页会自动挑一家）——给个提示，
+    // 别让它拿着 0 去请求菜单然后报一堆错
+    uni.showToast({ title: '先去首页选一家门店', icon: 'none' })
+    return
+  }
+
+  if (id !== storeId.value) {
+    // 换了门店就清空购物车：在 A 店点的菜到了 B 店可能没有、价格也不一样
     clearCart()
-    cart.storeId = storeId.value
-    cart.storeName = storeName.value
+    cart.storeId = id
+    cart.storeName = storeState.current?.name || ''
+    storeId.value = id
+    storeName.value = cart.storeName
   }
   loadMenu()
 })
@@ -500,6 +519,10 @@ onLoad((query) => {
   font-size: 26rpx;
   background: #f2f2f2;
   color: #1f1f1f;
+  /* 分类栏是横向滚动的，**不能让它们被挤窄**：`.category-row` 是 flex 容器，
+     不写这条的话所有分类会一起挤进屏幕宽度，「招牌面食」会折成两行。
+     （这行是补的——仓库里那张旧截图就已经折着了，一直没人发现） */
+  flex-shrink: 0;
 }
 
 .category.active {
@@ -513,7 +536,9 @@ onLoad((query) => {
 }
 
 .dish-list {
-  padding: 20rpx 24rpx 0;
+  /* 底部留出购物车栏的高度：它是 position: fixed 盖在内容上的，
+     不留白的话最后一道菜会被压住点不到（购物车栏 110rpx + 一点余量） */
+  padding: 20rpx 24rpx 140rpx;
 }
 
 .dish-card {
@@ -597,7 +622,11 @@ onLoad((query) => {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* **不能用 bottom: 0**：这一页现在是 tab 页，底部被 tabBar 占着。
+     小程序里 tabBar 是原生的、页面视口本来就不含它，`bottom: 0` 没问题；
+     但 H5 里 tabBar 是个 DOM 元素，两个都贴底就会压在一起。
+     `--window-bottom` 是 uni-app 给的变量：小程序里是 0，H5 里是 tabBar 的高度 */
+  bottom: var(--window-bottom);
   height: 110rpx;
   background: #1f1f1f;
   display: flex;

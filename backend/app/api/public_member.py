@@ -18,7 +18,7 @@ from backend.app.schemas.public_member_schema import MemberCouponQuerySchema
 from backend.app.services import CouponService
 from backend.app.services.member_service import MemberService
 from backend.app.utils.api_response import api_response
-from backend.app.utils.decorators import member_required
+from backend.app.utils.decorators import member_optional, member_required
 
 bp = Blueprint('public_member', __name__, url_prefix='/api/public')
 
@@ -82,17 +82,27 @@ def my_coupons(params):
 
 
 @bp.get('/coupons')
-@bp.response(200, description='券中心：有哪些券能领，以及我各领了几张')
-@member_required
+@bp.response(200, description='券中心：有哪些券能领，登录了还带「我领了几张」')
+@member_optional
 def coupon_center():
     """券中心
+
+    **不需要登录**：顾客端首页要把它当「近期活动」展示，一进来就是登录墙
+    太难看。不登录时 `claimed_count` 按 0 算、`can_claim` 只看券本身
+    （限领几条算不出来）——点「领取」的时候才要求登录。
 
     **不能领的也返回**（带 `blocked_reason`）：一张券摆在眼前却说不出为什么领不了，
     比它干脆不出现更让人恼火。
     """
+    member = g.get('member')
     return jsonify(api_response(
         success=True,
-        data={'coupons': CouponService.get_claimable_templates(g.member.id)},
+        data={
+            'coupons': CouponService.get_claimable_templates(
+                member.id if member else None
+            ),
+            'logged_in': member is not None,
+        },
     ))
 
 

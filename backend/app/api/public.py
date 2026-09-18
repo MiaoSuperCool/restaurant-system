@@ -53,6 +53,13 @@ def stores():
                     'address': store.address,
                     'phone': store.phone,
                     'store_type': store.store_type,
+                    'store_type_label': store.TYPE_LABELS.get(store.store_type,
+                                                             store.store_type),
+                    # 顾客端首页那张门店卡片要显示的两项。
+                    # **没有用 store.to_dict()**：那份是给员工看的，
+                    # 里面有 run_mode（灰度切换）这种顾客不该看到的东西
+                    'description': store.description,
+                    'business_hours': store.business_hours,
                 }
                 for store in PublicService.get_open_stores()
             ]

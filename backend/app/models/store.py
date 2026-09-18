@@ -44,6 +44,15 @@ class Store(BaseModel):
     address = db.Column(db.String(255), nullable=False, default='')
     phone = db.Column(db.String(20), nullable=False, default='')
 
+    # ---------- 给顾客看的展示信息 ----------
+    # 这两个字段不出现在任何业务逻辑里，纯粹是「顾客点开这家店想看什么」：
+    # 一句话介绍 + 几点开门几点关。
+    #
+    # 为什么单列而不是塞进 remark：`remark` 是内部备注（「这家店在装修，
+    # 对接人王工」这类），是要给员工看的，不能顺手拿去给顾客看。
+    description = db.Column(db.String(255), nullable=False, default='')
+    business_hours = db.Column(db.String(64), nullable=False, default='')
+
     business_status = db.Column(db.String(20), nullable=False, default=STATUS_OPEN)
     # 灰度切换期间：老系统为权威时新系统只读该店数据
     run_mode = db.Column(db.String(20), nullable=False, default=MODE_NEW)
@@ -59,6 +68,9 @@ class Store(BaseModel):
             'store_type_label': self.TYPE_LABELS.get(self.store_type, self.store_type),
             'address': self.address,
             'phone': self.phone,
+            # 给顾客看的：一句话介绍 + 营业时间
+            'description': self.description,
+            'business_hours': self.business_hours,
             'business_status': self.business_status,
             'business_status_label': self.STATUS_LABELS.get(
                 self.business_status, self.business_status

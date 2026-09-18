@@ -191,8 +191,36 @@ def test_staff_token_is_rejected_by_member_endpoints(client, admin_staff):
 
 
 def test_member_endpoints_need_a_token(client):
-    for path in ('/api/public/me', '/api/public/me/coupons', '/api/public/coupons'):
+    for path in ('/api/public/me', '/api/public/me/coupons'):
         assert client.get(path).status_code == 401
+
+
+def test_coupon_center_is_public(client, admin_staff):
+    """**券中心不登录也能看**——它是首页那个「近期活动」区的数据源
+
+    顾客端不强制登录，一进首页就是登录墙太难看。不登录时
+    `claimed_count` 按 0 算、`logged_in` 是 false；点「领取」才要求登录。
+    """
+    _template(client, '公开的券')
+
+    resp = client.get('/api/public/coupons')
+    assert resp.status_code == 200
+    data = resp.get_json()['data']
+    assert data['logged_in'] is False
+    assert [c['name'] for c in data['coupons']] == ['公开的券']
+    assert data['coupons'][0]['claimed_count'] == 0
+
+    # 登录之后同一个接口多带个人信息
+    token, _ = _member_token(client)
+    logged = client.get('/api/public/coupons', headers=_auth(token)).get_json()['data']
+    assert logged['logged_in'] is True
+
+
+def test_claim_still_needs_login(client, admin_staff):
+    """看得到不等于领得到——**领的时候必须登录**，不然券挂不到人头上"""
+    template = _template(client, '要登录才能领')
+    resp = client.post(f'/api/public/coupons/{template["id"]}/claim')
+    assert resp.status_code == 401
 
 
 def test_disabled_member_loses_access_immediately(client):

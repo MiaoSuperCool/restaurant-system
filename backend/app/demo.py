@@ -30,13 +30,21 @@ DEMO_PASSWORD = 'Demo123!'
 # ---------------------------------------------------------------- 数据定义
 
 STORES = [
-    # (编码, 名称, 类型, 地址, 电话)
-    ('S001', '解放路店', 'dine_in', '杭州市上城区解放路 128 号', '0571-87001001'),
-    ('S002', '文三路店', 'fast_food', '杭州市西湖区文三路 258 号', '0571-87001002'),
-    ('S003', '武林门店', 'dine_in', '杭州市拱墅区武林路 66 号', '0571-87001003'),
-    ('S004', '滨江宝龙店', 'fast_food', '杭州市滨江区江南大道 222 号', '0571-87001004'),
-    ('S005', '西溪印象城店', 'dine_in', '杭州市余杭区五常大道 100 号', '0571-87001005'),
-    ('S006', '萧山万象汇店', 'fast_food', '杭州市萧山区市心北路 666 号', '0571-87001006'),
+    # (编码, 名称, 类型, 地址, 电话, 简介, 营业时间)
+    # 最后两项是**给顾客看的**（顾客端首页那张门店卡片），不是内部备注——
+    # 内部备注在另一个字段里（`remark`），别混
+    ('S001', '解放路店', 'dine_in', '杭州市上城区解放路 128 号', '0571-87001001',
+     '总店，牛骨汤底熬 8 小时', '09:00-22:00'),
+    ('S002', '文三路店', 'fast_food', '杭州市西湖区文三路 258 号', '0571-87001002',
+     '写字楼店，出餐快', '07:30-20:30'),
+    ('S003', '武林门店', 'dine_in', '杭州市拱墅区武林路 66 号', '0571-87001003',
+     '景区边上，有二楼雅座', '10:00-22:30'),
+    ('S004', '滨江宝龙店', 'fast_food', '杭州市滨江区江南大道 222 号', '0571-87001004',
+     '商场店，支持自取', '10:00-21:30'),
+    ('S005', '西溪印象城店', 'dine_in', '杭州市余杭区五常大道 100 号', '0571-87001005',
+     '西溪湿地旁，周末排队', '10:30-21:00'),
+    ('S006', '萧山万象汇店', 'fast_food', '杭州市萧山区市心北路 666 号', '0571-87001006',
+     '新店，主打外卖', '10:00-21:00'),
 ]
 
 CATEGORIES = [
@@ -417,13 +425,18 @@ def seed_demo(reset=False):
 
     # ---------- 门店 ----------
     stores_by_code = {}
-    for code, name, store_type, address, phone in STORES:
+    for code, name, store_type, address, phone, description, hours in STORES:
         store = Store.query.filter_by(code=code).first()
         if not store:
-            store = Store(code=code, name=name, store_type=store_type,
-                          address=address, phone=phone)
+            store = Store(code=code, name=name, store_type=store_type)
             db.session.add(store)
             stats['stores'] += 1
+        # 和券模板一个道理：**每次跑都写回定义里的值**，不然新加的展示字段
+        # 在老环境里永远是空的（顾客端首页那张卡片就没东西可显示）
+        store.address = address
+        store.phone = phone
+        store.description = description
+        store.business_hours = hours
         stores_by_code[code] = store
     db.session.flush()
 

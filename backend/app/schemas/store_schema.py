@@ -19,6 +19,14 @@ class StoreCreateSchema(Schema):
     store_type = fields.Str(load_default=Store.TYPE_DINE_IN, validate=one_of(Store.TYPE_LABELS))
     address = fields.Str(load_default='', validate=validate.Length(max=255))
     phone = fields.Str(load_default='', validate=validate.Length(max=20))
+    description = fields.Str(
+        load_default='', validate=validate.Length(max=255),
+        metadata={'description': '一句话介绍，给顾客看的；内部备注请用 remark'},
+    )
+    business_hours = fields.Str(
+        load_default='', validate=validate.Length(max=64),
+        metadata={'description': '营业时间，如 09:00-22:00'},
+    )
     business_status = fields.Str(load_default=Store.STATUS_OPEN, validate=one_of(Store.STATUS_LABELS))
     run_mode = fields.Str(load_default=Store.MODE_NEW, validate=one_of(Store.MODE_LABELS))
     remark = fields.Str(load_default='', validate=validate.Length(max=255))
@@ -32,6 +40,8 @@ class StoreUpdateSchema(Schema):
     store_type = fields.Str(validate=one_of(Store.TYPE_LABELS))
     address = fields.Str(validate=validate.Length(max=255))
     phone = fields.Str(validate=validate.Length(max=20))
+    description = fields.Str(validate=validate.Length(max=255))
+    business_hours = fields.Str(validate=validate.Length(max=64))
     business_status = fields.Str(validate=one_of(Store.STATUS_LABELS))
     run_mode = fields.Str(validate=one_of(Store.MODE_LABELS))
     remark = fields.Str(validate=validate.Length(max=255))

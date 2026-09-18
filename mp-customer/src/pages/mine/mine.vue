@@ -42,7 +42,7 @@
           <text class="entry-title">我的券包</text>
           <text class="entry-sub">{{ couponSummary }}</text>
         </view>
-        <view class="entry" @tap="go('/pages/orders/orders')">
+        <view class="entry" @tap="goOrders">
           <text class="entry-title">我的订单</text>
           <text class="entry-sub">下单记录和状态</text>
         </view>
@@ -104,6 +104,11 @@ async function load() {
 
 function go(url: string) {
   uni.navigateTo({ url })
+}
+
+/** 订单页是底部 tab 之一，**只能 switchTab**（navigateTo 打不开 tab 页） */
+function goOrders() {
+  uni.switchTab({ url: '/pages/orders/orders' })
 }
 
 function goLogin() {

@@ -13,6 +13,11 @@ export interface StoreBrief {
   address: string
   phone: string
   store_type: string
+  store_type_label: string
+  /** 给顾客看的一句话介绍 */
+  description: string
+  /** 营业时间，如 09:00-22:00 */
+  business_hours: string
 }
 
 /** 规格选项（大份 / 微辣 / 加蛋） */

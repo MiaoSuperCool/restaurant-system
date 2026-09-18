@@ -73,6 +73,8 @@ class StoreService:
                 store_type=data['store_type'],
                 address=data.get('address', ''),
                 phone=data.get('phone', ''),
+                description=data.get('description', ''),
+                business_hours=data.get('business_hours', ''),
                 business_status=data['business_status'],
                 run_mode=data['run_mode'],
                 remark=data.get('remark', ''),
@@ -127,6 +129,7 @@ class StoreService:
                 store.name = data['name']
 
             for field in ('store_type', 'address', 'phone',
+                          'description', 'business_hours',
                           'business_status', 'run_mode', 'remark'):
                 if field in data:
                     setattr(store, field, data[field])

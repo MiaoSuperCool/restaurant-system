@@ -40,6 +40,28 @@ def member_required(func):
     return wrapper
 
 
+def member_optional(func):
+    """带了顾客 token 就认出来放 `g.member`，没带就当匿名——**不拦截**
+
+    用在「公开，但登录了能多看到点东西」的接口上。典型的是券中心：
+
+        这家店有什么券能领     公开信息，路过的人也该看得到
+        我领过几张、还能领几张  只有登录了才知道（不登录时按 0 算）
+
+    要是把这类接口也做成「必须登录」，首页就没法放了——顾客第一眼看到的
+    就是一道登录墙，而这一端本来是不强制登录的。
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        from backend.app.services.member_auth_service import MemberAuthService
+        from backend.app.utils.token import bearer_token
+
+        token = bearer_token()
+        g.member = MemberAuthService.resolve_token(token) if token else None
+        return func(*args, **kwargs)
+    return wrapper
+
+
 def permission_required(*codes):
     """要求当前登录员工至少拥有其中一个权限码
 
