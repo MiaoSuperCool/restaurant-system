@@ -174,13 +174,17 @@ onMounted(async () => {
         <div class="bars">
           <!-- 每根柱子自己带 tooltip：**具体日期和金额都在这儿**，
                柱子上不再标数字——30 根柱子那点宽度标不下，
-               硬标就得抽稀，一抽稀就有标有不标、柱子顶端参差不齐 -->
+               硬标就得抽稀，一抽稀就有标有不标、柱子顶端参差不齐
+
+               **营业额为 0 的那几根不出 tooltip**：没有柱子就说明是 0，
+               日期看下面的刻度也知道，再弹一个「¥0.00」纯属噪音 -->
           <el-tooltip
             v-for="(row, index) in data?.trend ?? []"
             :key="row.date"
             :content="`${row.date} · 营业额 ${formatPrice(row.revenue)}`"
             placement="top"
             :show-after="0"
+            :disabled="row.revenue <= 0"
           >
             <div class="bar-col">
               <div class="bar-track">
