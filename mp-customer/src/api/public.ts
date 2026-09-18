@@ -27,6 +27,8 @@ export function createOrder(data: {
   source: string
   remark?: string
   items: OrderItemPayload[]
+  /** 用哪张券（券包里的 id）；不传 = 不用券。**没登录的人手里没有券** */
+  user_coupon_id?: number
 }) {
   return request<Order>({ url: '/api/public/orders', method: 'POST', data })
 }

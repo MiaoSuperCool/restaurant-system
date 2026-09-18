@@ -62,6 +62,12 @@ class PublicService:
                 member_id=member.id if member else None,
             )
             db.session.add(order)
+
+            # 券也走内部那条路的同一段逻辑（归属校验、算抵扣、标记已用都在里面），
+            # **放在 build_order 之后**：那是个纯构造，而这一步要真动数据库、
+            # 还要改应付金额
+            OrderService.apply_coupon(order, data.get('user_coupon_id'))
+
             db.session.commit()
 
             AuditService.log(

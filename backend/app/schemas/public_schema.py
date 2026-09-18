@@ -40,6 +40,15 @@ class PublicOrderCreateSchema(Schema):
         required=True,
         validate=validate.Length(min=1, error='订单至少要有一道菜'),
     )
+    # 要用哪张券。**不传就是不用券**——顾客端不登录也能下单，
+    # 没登录的人手里本来就没有券（券挂在会员头上）。
+    #
+    # 名字带 `user_` 是为了和「券模板」区分开：模板是"满 30 减 5"那条规则，
+    # 这里是这个人手里那张具体的券（`UserCoupon` 的 id）
+    user_coupon_id = fields.Integer(
+        required=False,
+        metadata={'description': '用哪张券（我的券包里的 id）；不传 = 不用券'},
+    )
 
 
 class PublicPaySchema(Schema):

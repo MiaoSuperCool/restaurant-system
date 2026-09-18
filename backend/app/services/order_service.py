@@ -321,7 +321,8 @@ class OrderService:
             #
             # 顺序无所谓——两边都按**商品原价**算（券的门槛和折扣、积分的抵扣上限），
             # 各自独立、不用看对方算完剩多少
-            OrderService._apply_coupon(order, data.get('coupon_id'))
+            # （不带下划线：顾客自助下单那条路也要用它，不是内部实现细节了）
+            OrderService.apply_coupon(order, data.get('coupon_id'))
             OrderService._apply_points_discount(order, data.get('points_to_use') or 0)
 
             db.session.commit()
@@ -419,7 +420,7 @@ class OrderService:
     # ---------- 收款 ----------
 
     @staticmethod
-    def _apply_coupon(order, coupon_id):
+    def apply_coupon(order, coupon_id):
         """用一张券抵这单的一部分
 
         券的抵扣额记进 `discount_amount`（那个字段从一期就留着，注释写着

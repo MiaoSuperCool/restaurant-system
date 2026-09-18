@@ -181,3 +181,15 @@ export interface Pagination {
   total: number
   pages: number
 }
+
+/**
+ * 结算时「这一单能用的一张券」
+ *
+ * 就是券包里的那张（`MemberCoupon`）**加上后端算好的能抵多少**。
+ * 为什么 discount 要后端给：门槛、折扣率、封顶这几条规则都在后面算的，
+ * 前端自己再算一遍迟早会和它漂移。
+ */
+export interface UsableCoupon extends MemberCoupon {
+  /** 这一单能抵多少钱（后端算好的） */
+  discount: number
+}

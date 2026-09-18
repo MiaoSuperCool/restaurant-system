@@ -14,6 +14,7 @@ from flask import current_app, g, jsonify
 from flask_smorest import Blueprint
 
 from backend.app.extensions import csrf
+from backend.app.schemas.coupon_schema import UsableCouponQuerySchema
 from backend.app.schemas.public_member_schema import MemberCouponQuerySchema
 from backend.app.services import CouponService
 from backend.app.services.member_service import MemberService
@@ -77,6 +78,36 @@ def my_coupons(params):
         data={
             'coupons': [c.to_dict() for c in pagination.items],
             'pagination': _pagination(pagination),
+        }
+    ))
+
+
+@bp.get('/me/coupons/usable')
+@bp.response(200, description='这一单能用哪些券（按能抵多少倒序）')
+@member_required
+@bp.arguments(UsableCouponQuerySchema, location='query')
+def usable_coupons(params):
+    """结算时「这一单能用哪些券」
+
+    和员工端那个 `/api/coupons/members/<id>/usable` 是**同一个 service**，
+    区别只有两处：
+
+        member_id   从 token 来，不从 URL 来（URL 里带 id 就能看别人的券）
+        返回里带 discount   顾客端要直接显示「能减 5 元」，不该自己再算一遍
+
+    **用不了的券不会出现**——而不是出现了再告诉他不能用。
+    """
+    coupons = CouponService.get_usable_coupons(
+        g.member.id, params['store_id'], params['amount'],
+    )
+    return jsonify(api_response(
+        success=True,
+        data={
+            'coupons': [
+                {**c.to_dict(),
+                 'discount': float(c.template.discount_for(params['amount']))}
+                for c in coupons
+            ],
         }
     ))
 

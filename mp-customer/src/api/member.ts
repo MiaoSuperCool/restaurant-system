@@ -1,5 +1,11 @@
 import { request } from './request'
-import type { Member, MemberCoupon, Pagination, ClaimableCoupon } from './types'
+import type {
+  ClaimableCoupon,
+  Member,
+  MemberCoupon,
+  Pagination,
+  UsableCoupon,
+} from './types'
 
 /** 登录返回的 data */
 export interface MemberLoginResult {
@@ -91,5 +97,19 @@ export function claimCoupon(templateId: number) {
   return request<MemberCoupon>({
     url: `/api/public/coupons/${templateId}/claim`,
     method: 'POST',
+  })
+}
+/**
+ * 结算时「这一单能用哪些券」（要登录）
+ *
+ * 要传门店和金额——四个条件里有两个（适用门店、满多少）得靠它们判。
+ * **用不了的券不会出现在结果里**，返回的每一张都是真能用的；
+ * `discount` 也是后端算好的，前端拿它直接显示「能减 X 元」。
+ */
+export function getUsableCoupons(storeId: number, amount: number) {
+  return request<{ coupons: UsableCoupon[] }>({
+    url: '/api/public/me/coupons/usable',
+    method: 'GET',
+    params: { store_id: storeId, amount },
   })
 }

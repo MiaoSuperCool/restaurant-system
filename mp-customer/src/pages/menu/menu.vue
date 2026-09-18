@@ -68,7 +68,7 @@
 
     <!-- 底部购物车栏 -->
     <view class="cart-bar" :class="{ empty: cartCount === 0 }">
-      <view class="cart-left" @tap="cartCount > 0 && (cartVisible = true)">
+      <view class="cart-left" @tap="openCart">
         <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
         <view class="cart-badge placeholder" v-else>0</view>
         <text class="cart-total">{{ formatPrice(cartTotal) }}</text>
@@ -76,7 +76,7 @@
       <view
         class="cart-action"
         :class="{ disabled: cartCount === 0 }"
-        @tap="cartCount > 0 && (cartVisible = true)"
+        @tap="openCart"
       >
         去结算
       </view>
@@ -105,6 +105,29 @@
           </view>
         </scroll-view>
 
+        <!-- 用券：券挂在会员头上，所以没登录时这里不是"没有券"而是"登录后才有" -->
+        <view v-if="!loggedIn" class="coupon-login" @tap="goLogin">
+          <text class="coupon-login-text">登录后可用券</text>
+          <text class="coupon-arrow">›</text>
+        </view>
+        <view v-else class="coupon-box">
+          <view class="coupon-head">
+            <text class="coupon-title">优惠券</text>
+            <text v-if="couponLoading" class="coupon-hint">加载中…</text>
+            <text v-else-if="!usableCoupons.length" class="coupon-hint">这单没有可用的券</text>
+          </view>
+          <view
+            v-for="coupon in usableCoupons"
+            :key="coupon.id"
+            class="coupon-item"
+            :class="{ active: selectedCoupon?.id === coupon.id }"
+            @tap="pickCoupon(coupon)"
+          >
+            <text class="coupon-name">{{ coupon.template_name }}</text>
+            <text class="coupon-value">−{{ formatPrice(coupon.discount) }}</text>
+          </view>
+        </view>
+
         <view class="sheet-form">
           <view class="source-row">
             <text
@@ -121,7 +144,13 @@
         </view>
 
         <view class="sheet-foot">
-          <text class="sheet-total">合计 {{ formatPrice(cartTotal) }}</text>
+          <view class="foot-total">
+            <text class="sheet-total">合计 {{ formatPrice(payableTotal) }}</text>
+            <!-- 用了券才显示原价，不然这个数字反而让人以为没算对 -->
+            <text v-if="selectedCoupon" class="sheet-origin">
+              原价 {{ formatPrice(cartTotal) }}
+            </text>
+          </view>
           <view class="submit" :class="{ disabled: submitting }" @tap="handleSubmit">
             {{ submitting ? '提交中…' : '提交订单' }}
           </view>
@@ -192,11 +221,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { getUsableCoupons } from '@/api/member'
 import { createOrder, getMenu } from '@/api/public'
-import type { DishOptionGroup, MenuRow } from '@/api/types'
+import type { DishOptionGroup, MenuRow, UsableCoupon } from '@/api/types'
 import { addToCart, cart, cartCount, cartTotal, changeQuantity, clearCart } from '@/stores/cart'
+import { isLoggedIn } from '@/stores/memberAuth'
 import { currentStoreId, storeState } from '@/stores/currentStore'
 import { saveOrder } from '@/stores/myOrders'
 import { formatPrice } from '@/utils/format'
@@ -215,6 +246,69 @@ const activeCategory = ref<number | null>(null)
 const search = ref('')
 const cartVisible = ref(false)
 const submitting = ref(false)
+
+/** 这单能用的券。没登录时恒为空——券挂在会员头上，不登录就没有「谁的券」 */
+const usableCoupons = ref<UsableCoupon[]>([])
+const selectedCoupon = ref<UsableCoupon | null>(null)
+const couponLoading = ref(false)
+const loggedIn = ref(false)
+
+/** 抵扣之后的应付。券抵的那部分由后端算，前端只做减法 */
+const payableTotal = computed(() =>
+  Math.max(0, cartTotal.value - (selectedCoupon.value?.discount ?? 0))
+)
+
+/**
+ * 拉一次「这单能用的券」
+ *
+ * **打开弹层时拉，弹层里改了数量也重拉**：加一份菜可能就够着「满 50 减 10」了，
+ * 减一份又不够了。门槛和适用门店这两条规则只在后端有，前端不猜。
+ *
+ * 重拉之后要拿新数据把选中那张**换成一条新的**——折扣率那种券的抵扣额
+ * 是跟着金额走的（8.8 折：金额一变，减多少也变）。
+ * 换的时候要是它已经不在可用列表里了（金额缩水、门槛不够了），就取消选中：
+ * 留着的话提交会被后端拒掉，用户白填一遍还看不懂为什么。
+ */
+async function loadUsableCoupons() {
+  loggedIn.value = isLoggedIn()
+  if (!loggedIn.value) {
+    usableCoupons.value = []
+    selectedCoupon.value = null
+    return
+  }
+  couponLoading.value = true
+  try {
+    const data = await getUsableCoupons(storeId.value, cartTotal.value)
+    usableCoupons.value = data.coupons
+    if (selectedCoupon.value) {
+      selectedCoupon.value = data.coupons.find(
+        (c) => c.id === selectedCoupon.value?.id
+      ) ?? null
+    }
+  } catch {
+    // 拉不到就当没有可用券：宁可让用户按原价下单，也不能把订单卡在这儿
+    usableCoupons.value = []
+    selectedCoupon.value = null
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+/** 再点一下已选中的那张 = 取消选它 */
+function pickCoupon(coupon: UsableCoupon | null) {
+  selectedCoupon.value = selectedCoupon.value?.id === coupon?.id ? null : coupon
+}
+
+function openCart() {
+  if (cartCount.value === 0) return
+  cartVisible.value = true
+  loadUsableCoupons()
+}
+
+// 弹层开着的时候改数量：金额变了，能用的券跟着变
+watch(cartTotal, () => {
+  if (cartVisible.value) loadUsableCoupons()
+})
 
 /** 分类从菜品里现推，只展示真的上了菜的分类 */
 const categories = computed(() => {
@@ -380,6 +474,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     // 只传菜品和数量，**不传价格**——后端会按本店实际价重算一遍
+    // （券也一样：只传「用哪张」，抵多少是后端算的）
     const order = await createOrder({
       store_id: storeId.value,
       source: cart.source,
@@ -389,9 +484,12 @@ async function handleSubmit() {
         quantity: item.quantity,
         option_ids: item.option_ids,
       })),
+      user_coupon_id: selectedCoupon.value?.id,
     })
     saveOrder(order)
     clearCart()
+    selectedCoupon.value = null
+    usableCoupons.value = []
     cartVisible.value = false
     uni.redirectTo({
       url: `/pages/order/detail?orderNo=${order.order_no}&token=${order.query_token}`,
@@ -406,6 +504,11 @@ async function handleSubmit() {
 function goMyOrders() {
   // 订单页现在是底部 tab 之一，**必须用 switchTab**（navigateTo 打不开 tab 页）
   uni.switchTab({ url: '/pages/orders/orders' })
+}
+
+/** 去登录页——登录页不是 tab，用 navigateTo（回来时这一页原样还在） */
+function goLogin() {
+  uni.navigateTo({ url: '/pages/login/login' })
 }
 
 async function loadMenu() {
@@ -447,6 +550,11 @@ onShow(() => {
     storeName.value = cart.storeName
   }
   loadMenu()
+
+  // 结算弹层开着的时候切出去又切回来（最典型的是点「登录后可用券」去登录），
+  // **得重新拉一次券**：登录态和券都是刚变的，不刷的话弹层里还写着
+  // 「登录后可用券」——明明已经登录了。这个是跑起来才发现的
+  if (cartVisible.value) loadUsableCoupons()
 })
 </script>
 
@@ -823,10 +931,87 @@ onShow(() => {
   margin-top: 24rpx;
 }
 
+.foot-total {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- 用券 ---------- */
+
+/* 登录后才有券——所以这里不是"没有券"，是个入口 */
+.coupon-login {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 32rpx;
+  border-top: 1rpx solid #f0f0f0;
+  font-size: 26rpx;
+  color: #1f1f1f;
+}
+
+.coupon-arrow {
+  color: #c0c0c0;
+  font-size: 30rpx;
+}
+
+.coupon-box {
+  padding: 20rpx 32rpx 0;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.coupon-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.coupon-title {
+  font-size: 26rpx;
+  color: #1f1f1f;
+}
+
+.coupon-hint {
+  font-size: 24rpx;
+  color: #a0a0a0;
+}
+
+/* 一行一张券：点一下选它，再点一下取消。
+   **不做"不使用优惠券"那一项**——点一下已选中的就是取消，少一个选项少一次犹豫 */
+.coupon-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 24rpx;
+  margin-bottom: 12rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #eee;
+  font-size: 26rpx;
+  color: #1f1f1f;
+}
+
+.coupon-item.active {
+  border-color: #1f1f1f;
+  background: #f7f7f7;
+}
+
+.coupon-value {
+  font-weight: 600;
+}
+
 .sheet-total {
   font-size: 32rpx;
   font-weight: 600;
   color: #1f1f1f;
+}
+
+/* 用了券才出现：把原价摆在下面，不然"合计怎么少了"要用户自己算 */
+.sheet-origin {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #a0a0a0;
+  text-decoration: line-through;
 }
 
 .submit {
