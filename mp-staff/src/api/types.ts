@@ -147,15 +147,43 @@ export interface ReportStoreRow {
   order_count: number
 }
 
+/** 经营报表：支付方式构成的一格。只看成功的流水 */
+export interface ReportMethodRow {
+  method: string
+  method_label: string
+  count: number
+  amount: number
+}
+
+/** 经营报表：菜品排行的一格（按份数，前 10） */
+export interface ReportDishRow {
+  dish_id: number
+  dish_name: string
+  quantity: number
+  amount: number
+}
+
+/** 经营报表：时段分布的一格（本地时间的小时）。只返回有单的小时 */
+export interface ReportHourRow {
+  hour: number
+  order_count: number
+  revenue: number
+}
+
 /**
  * 经营概览
  *
- * 接口返回的东西比这里多（还有支付构成、菜品排行、时段分布），
- * **只声明这个端用得到的**——多声明的字段没人用，还会让人以为这里会显示。
+ * **和电脑上那个报表页是同一份数据**——网页端有的这几块，手机上一样有。
+ * 一开始只声明了 `summary/trend/by_store`（当时的判断是「手机上放不下，
+ * 那些电脑上看」），后来发现那个判断不对：老板在饭桌上掏出手机，
+ * 想知道的就是「今天微信收了多少」「哪道菜卖得好」。
  */
 export interface ReportOverview {
   range: { start: string; end: string; days: number }
   summary: ReportSummary
   trend: ReportTrendRow[]
+  by_hour: ReportHourRow[]
   by_store: ReportStoreRow[]
+  by_method: ReportMethodRow[]
+  top_dishes: ReportDishRow[]
 }

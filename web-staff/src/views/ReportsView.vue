@@ -56,6 +56,23 @@ function barLength(value: number, base: number): string {
   return `${Math.max((value / base) * 100, value > 0 ? 4 : 0)}%`
 }
 
+/**
+ * 刻度怎么写
+ *
+ * 柱子少（两周以内）写具体日期——「09-12」比「1」直观得多。
+ * 柱子多就写**序号**（第几天）：30 天每根摊到 22px，而「09-12」要 35px，
+ * 写日期会被挤到溢出（`white-space: nowrap` + flex 默认的 `min-width: auto`），
+ * 只能抽稀——抽稀就会出现「有的柱子有标签、有的没有」，看着乱。
+ * 序号只要 14px，30 个排得下，还整齐。
+ *
+ * 具体的日期和金额在 tooltip 里，鼠标放上去就有——**柱子本身只负责看趋势**。
+ */
+const compactTicks = computed(() => (data.value?.trend.length ?? 0) > 14)
+
+function tickText(row: { date: string }, index: number): string {
+  return compactTicks.value ? String(index + 1) : row.date.slice(5)
+}
+
 const trendMax = computed(() =>
   Math.max(...(data.value?.trend.map((row) => row.revenue) ?? [0]))
 )
@@ -155,13 +172,23 @@ onMounted(async () => {
       <div class="panel">
         <h2>营业额趋势</h2>
         <div class="bars">
-          <div v-for="row in data?.trend ?? []" :key="row.date" class="bar-col">
-            <span class="bar-value">{{ row.revenue ? formatPrice(row.revenue) : '' }}</span>
-            <div class="bar-track">
-              <div class="bar" :style="{ height: barLength(row.revenue, trendMax) }" />
+          <!-- 每根柱子自己带 tooltip：**具体日期和金额都在这儿**，
+               柱子上不再标数字——30 根柱子那点宽度标不下，
+               硬标就得抽稀，一抽稀就有标有不标、柱子顶端参差不齐 -->
+          <el-tooltip
+            v-for="(row, index) in data?.trend ?? []"
+            :key="row.date"
+            :content="`${row.date} · 营业额 ${formatPrice(row.revenue)}`"
+            placement="top"
+            :show-after="0"
+          >
+            <div class="bar-col">
+              <div class="bar-track">
+                <div class="bar" :style="{ height: barLength(row.revenue, trendMax) }" />
+              </div>
+              <span class="bar-label">{{ tickText(row, index) }}</span>
             </div>
-            <span class="bar-label">{{ row.date.slice(5) }}</span>
-          </div>
+          </el-tooltip>
         </div>
       </div>
 
@@ -370,17 +397,13 @@ onMounted(async () => {
 
 .bar-col {
   flex: 1;
+  /* **不写这条的话 flex 默认 min-width: auto**，列会被里面的文字撑开
+     （标签是 nowrap），一列撑宽、整排跟着溢出容器 */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   height: 100%;
-}
-
-.bar-value {
-  font-size: 11px;
-  color: #8a8a8a;
-  margin-bottom: 4px;
-  white-space: nowrap;
 }
 
 .bar-track {
