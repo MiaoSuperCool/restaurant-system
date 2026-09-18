@@ -1,0 +1,33 @@
+# ============================================
+# 「前端产物已经在别处构建好」版本的镜像
+#
+# 什么时候用它：服务器内存小（1~2G）或者国内网络拉不动 npm 包，
+# 跑不动 Dockerfile 里那三个 node 构建阶段。先在本地把三个前端构建出来，
+# 打包传上去，再用这个文件装镜像——服务器只装 Python，两分钟就好。
+#
+# 完整步骤见 docs/部署.md 的「小内存机器」那一节。摘要：
+#   本地   npm run build（web-staff）、H5_BASE=/xxx/ npm run build:h5（两个小程序端）
+#   打包   prebuilt/{web-staff,mp-customer,mp-staff} 三个目录
+#   服务器 docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --build
+# ============================================
+FROM python:3.12-slim
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+COPY backend/ ./backend/
+
+# 前端产物：**放的位置必须和后端那三个常量对上**，
+# 不然页面能打开、静态资源全是 404
+# （backend/app/__init__.py 里的 FRONTEND_DIST / CUSTOMER_DIST / STAFF_DIST）
+COPY prebuilt/web-staff/ ./web-staff/dist/
+COPY prebuilt/mp-customer/ ./mp-customer/dist/build/h5/
+COPY prebuilt/mp-staff/ ./mp-staff/dist/build/h5/
+
+WORKDIR /app/backend
+EXPOSE 5000
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "wsgi:app"]

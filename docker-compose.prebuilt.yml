@@ -1,0 +1,16 @@
+# 配合 Dockerfile.prebuilt 用的覆盖文件
+#
+# **单独用没意义**，要连着主文件一起：
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --build
+#
+# 里面只改一处：app 服务换成 Dockerfile.prebuilt 构建（不跑 node 那三个前端构建）。
+# MySQL、Redis、启动自检那一串命令、端口、环境变量——全部沿用 docker-compose.yml。
+#
+# 为什么写成单独一个文件而不是改主文件：默认那条路（一条命令从源码构建全部）
+# 对绝大多数机器是对的，不该为了小机器的限制把它改掉。
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt

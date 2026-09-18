@@ -14,3 +14,8 @@ __pycache__/
 
 # 日志
 *.log
+
+# 「本机构建好的前端产物」那条部署路径用的（见 docs/部署.md 的小内存机器那节）：
+# 产物本身不该进仓库，它是构建结果，不是源码
+prebuilt/
+prebuilt-dists.tar.gz
