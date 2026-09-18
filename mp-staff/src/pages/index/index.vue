@@ -40,11 +40,18 @@
         <text class="entry-title">团购券核销</text>
         <text class="entry-sub">美团 / 抖音买的券，抵这一单的钱</text>
       </view>
+
+      <!-- 第四个入口只给店长和老板看：一线的人不需要「今天做了多少生意」，
+           而且这个数也不该给他们（后端要 report:store / report:all） -->
+      <view v-if="canSeeReport" class="entry" @tap="go('/pages/report/report')">
+        <text class="entry-title">经营</text>
+        <text class="entry-sub">今天做了多少、哪家店做得好</text>
+      </view>
     </view>
 
     <text class="footnote">
-      这里只放门店一线用得上的三件事。菜单、员工、报表那些在电脑上做——
-      手机屏幕塞不下，硬塞进去只会让每件事都变难用。
+      菜单、员工、门店那些在电脑上做——手机屏幕塞不下，硬塞进去只会让每件事都变难用。
+      这里放的是「站在店里能干的活」，外加店长和老板要看的那一眼数。
     </text>
   </view>
 </template>
@@ -54,7 +61,7 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getHome, logout } from '@/api/auth'
 import type { HomeData } from '@/api/auth'
-import { authState, clearSession, hasPermission, setSession } from '@/stores/auth'
+import { authState, clearSession, hasAnyPermission, hasPermission, setSession } from '@/stores/auth'
 import { formatPrice } from '@/utils/format'
 
 const home = ref<HomeData | null>(null)
@@ -71,6 +78,8 @@ const canCreateOrder = computed(() => hasPermission('order:create'))
 const canViewOrder = computed(() => hasPermission('order:view'))
 const canReceive = computed(() => hasPermission('order:receive'))
 const canVerify = computed(() => hasPermission('coupon:verify'))
+// 看数的入口：店长（本店）和老板（全公司）有，收银员/服务员没有
+const canSeeReport = computed(() => hasAnyPermission('report:store', 'report:all'))
 
 async function loadHome() {
   try {

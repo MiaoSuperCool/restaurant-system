@@ -259,3 +259,25 @@ def test_report_needs_a_permission_code(app, client, admin_staff, make_staff, lo
     login('dianzhang3', 'Passw0rd!')
     assert client.get('/api/reports/overview',
                       query_string={'days': 1}).status_code == 200
+
+
+def test_days_actually_controls_the_range(app, client, admin_staff, login):
+    """`days` 得真的管用——**这条是发现 bug 之后补的**
+
+    原先 `resolve_range` 在 `start` 缺省时直接写死 `end - 6 天`，
+    于是传 1、传 30 都返回 7 天。而「7 天」是个看着很合理的数，
+    所以一直没人怀疑——12 条测试全传的 `days=7`，正好撞上默认值。
+    """
+    login('admin', 'Admin123!')
+
+    assert _overview(client, days=1)['range']['days'] == 1
+    assert _overview(client, days=7)['range']['days'] == 7
+    assert _overview(client, days=30)['range']['days'] == 30
+
+    # 传了具体日期就以它为准
+    data = _overview(client, days=30, start='2026-01-01', end='2026-01-10')
+    assert data['range'] == {'start': '2026-01-01', 'end': '2026-01-10', 'days': 10}
+
+    # 只给结束日：按 days 往回想，不是写死的 7 天
+    data = _overview(client, days=3, end='2026-05-20')
+    assert data['range']['start'] == '2026-05-18'

@@ -83,15 +83,18 @@ class ReportService:
     def resolve_range(days=7, start=None, end=None):
         """算出报表的时间区间
 
-        两种给法：给 `days`（最近 N 天，含今天），或者给 `start`/`end` 两个日期。
-        都不给就是最近 7 天。
+            days    最近 N 天（含 end）；默认 7
+            end     结束日；默认今天
+            start   起始日；**不传就按 days 反推**
+
+        两边都给了以 `start` 为准（更明确）。
+
+        **别在这儿写死「6」**：一开始就是那么写的——`start` 缺省时直接
+        `end - 6 天`，于是不管 `days` 传几都是 7 天。而 7 天是个看着很合理的数，
+        所以这个 bug 藏了很久（测试全传的 `days=7`，正好撞上）。
         """
-        if start or end:
-            end = end or date.today()
-            start = start or (end - timedelta(days=6))
-        else:
-            end = date.today()
-            start = end - timedelta(days=max(1, days) - 1)
+        end = end or date.today()
+        start = start or (end - timedelta(days=max(1, days) - 1))
 
         if start > end:
             start, end = end, start

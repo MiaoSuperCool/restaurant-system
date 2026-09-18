@@ -29,6 +29,12 @@
       "style": {
         "navigationBarTitleText": "团购券核销"
       }
+    },
+    {
+      "path": "pages/report/report",
+      "style": {
+        "navigationBarTitleText": "经营"
+      }
     }
   ],
   "globalStyle": {

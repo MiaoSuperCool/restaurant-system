@@ -1,14 +1,28 @@
 <template>
   <view class="page">
     <view v-if="storeId === null" class="blocked">
-      <text class="blocked-title">用不了代客点单</text>
+      <text class="blocked-title">先选一家门店</text>
       <text class="blocked-sub">
-        这个账号没有归属门店（总部账号就是这样）。代客点单必须知道是哪家店在点——
-        价格、上架、限量都按门店算。
+        代客点单必须知道是哪家店在点——价格、上架、限量都按门店算。
       </text>
     </view>
 
     <template v-else>
+      <!-- 门店：服务员/收银员只有自己那家，不用选；总部账号（老板/运营）要选 -->
+      <view v-if="canPickStore" class="store-bar">
+        <picker
+          mode="selector"
+          :range="storeNames"
+          :value="storeIndex"
+          @change="switchStore"
+        >
+          <view class="store-picker">
+            {{ storeName || '选择门店' }}
+            <text class="caret">▾</text>
+          </view>
+        </picker>
+      </view>
+
       <!-- 分类栏：横着滑。分类是从菜单里现推的，顺序由后端定死 -->
       <scroll-view class="cats" scroll-x>
         <view class="cat-row">
@@ -157,7 +171,7 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { createOrder } from '@/api/orders'
 import { getStoreMenu } from '@/api/menu'
-import type { DishOption, DishOptionGroup, StoreMenuRow } from '@/api/types'
+import type { DishOption, DishOptionGroup, StoreMenuRow, StoreOption } from '@/api/types'
 import {
   addToCart,
   cartCount,
@@ -167,10 +181,50 @@ import {
   clearCart,
   removeItem,
 } from '@/stores/cart'
-import { myStoreId } from '@/stores/auth'
+import { getStoreOptions } from '@/api/stores'
+import { hasPermission, myStoreId } from '@/stores/auth'
 import { formatPrice } from '@/utils/format'
 
+/**
+ * 门店从哪来
+ *
+ * 有归属门店的（服务员/收银员/店长）直接用自己那家，不用选。
+ * **总部账号（老板/运营）没有归属门店**，得在这儿挑一家——
+ * 电脑上的点单页本来就有这个选择器，小程序端一开始漏了，
+ * 结果是老板登进来只看到一句「用不了代客点单」。
+ */
 const storeId = ref<number | null>(myStoreId())
+const stores = ref<StoreOption[]>([])
+const canPickStore = computed(() => hasPermission('store:view'))
+
+const storeNames = computed(() => stores.value.map((store) => store.name))
+const storeIndex = computed(() =>
+  Math.max(stores.value.findIndex((store) => store.id === storeId.value), 0)
+)
+const storeName = computed(() =>
+  stores.value.find((store) => store.id === storeId.value)?.name ?? ''
+)
+
+async function loadStores() {
+  if (!canPickStore.value) return
+  try {
+    stores.value = (await getStoreOptions()).stores
+    // 没归属门店时默认挑第一家——让老板先看到菜，比让他先做一道选择题好。
+    // **不记到本地**：老板代客点单是偶发的事，记着反而容易在下一单点错店
+    if (storeId.value === null && stores.value.length) {
+      storeId.value = stores.value[0].id
+    }
+  } catch {
+    // request.ts 已经弹了提示
+  }
+}
+
+function switchStore(event: { detail: { value: number } }) {
+  const picked = stores.value[event.detail.value]
+  if (!picked || picked.id === storeId.value) return
+  storeId.value = picked.id
+  loadMenu()
+}
 const dishes = ref<StoreMenuRow[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -353,7 +407,10 @@ async function handleSubmit() {
   }
 }
 
-onLoad(loadMenu)
+onLoad(async () => {
+  await loadStores()
+  loadMenu()
+})
 </script>
 
 <style scoped>
@@ -385,6 +442,26 @@ onLoad(loadMenu)
   font-size: 26rpx;
   color: #a0a0a0;
   line-height: 1.7;
+}
+
+.store-bar {
+  flex-shrink: 0;
+  padding: 20rpx 24rpx 4rpx;
+  background: #fff;
+}
+
+.store-picker {
+  display: inline-flex;
+  align-items: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.caret {
+  margin-left: 8rpx;
+  font-size: 22rpx;
+  color: #8a8a8a;
 }
 
 .cats {

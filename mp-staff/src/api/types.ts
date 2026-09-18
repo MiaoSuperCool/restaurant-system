@@ -113,3 +113,49 @@ export interface Pagination {
   total: number
   pages: number
 }
+/** 门店下拉选项（对应 /api/stores/options 返回的一项） */
+export interface StoreOption {
+  id: number
+  code: string
+  name: string
+  business_status: string
+  business_status_label: string
+}
+
+/** 经营报表：汇总 */
+export interface ReportSummary {
+  revenue: number
+  order_count: number
+  /** 客单价 = 营业额 ÷ 单量；单量为 0 时后端给 0，不是 NaN */
+  avg_order_amount: number
+  refund_amount: number
+  cancelled_count: number
+}
+
+/** 经营报表：按天的一格。**没有单的日子也有一行** */
+export interface ReportTrendRow {
+  date: string
+  revenue: number
+  order_count: number
+}
+
+/** 经营报表：按门店的一格。店长只会看到自己一家 */
+export interface ReportStoreRow {
+  store_id: number
+  store_name: string
+  revenue: number
+  order_count: number
+}
+
+/**
+ * 经营概览
+ *
+ * 接口返回的东西比这里多（还有支付构成、菜品排行、时段分布），
+ * **只声明这个端用得到的**——多声明的字段没人用，还会让人以为这里会显示。
+ */
+export interface ReportOverview {
+  range: { start: string; end: string; days: number }
+  summary: ReportSummary
+  trend: ReportTrendRow[]
+  by_store: ReportStoreRow[]
+}

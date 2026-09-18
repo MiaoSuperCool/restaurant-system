@@ -1,5 +1,4 @@
 """经营报表的请求 schema"""
-import datetime
 
 from marshmallow import Schema, fields, validate
 
@@ -23,7 +22,9 @@ class ReportQuerySchema(Schema):
     )
     end = fields.Date(
         required=False,
-        load_default=lambda: datetime.date.today(),
+        # **这里不能给 load_default**：给了的话 service 就分不清
+        # 「用户传了 end」和「没人传、我补了个今天」——前者要走 start/end 那条路，
+        # 后者要走 days。默认值在 service 里补（那边才知道该补哪个）
         metadata={'description': '结束业务日（含当天）；默认今天'},
     )
     store_id = fields.Integer(
