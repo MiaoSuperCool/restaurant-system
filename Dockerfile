@@ -6,10 +6,16 @@
 # ---------- 阶段1：构建内部人员网页端 ----------
 FROM node:20-alpine AS web-staff-builder
 # 以 node 官方 20 版的 alpine镜像为起点，给这个阶段起名web-staff-builder，供后面引用
+#
+# npm 源：默认官方源，但**大陆机器直连 registry.npmjs.org 经常超时**，
+# npm ci 会直接失败（exit 1）。要换源不用改这个文件，在仓库根 .env 里写一行
+# NPM_REGISTRY=https://registry.npmmirror.com 就行（compose 会把它当构建参数传进来）。
+# ARG 不跨阶段，所以三个构建阶段各声明一次
+ARG NPM_REGISTRY=https://registry.npmjs.org/
 WORKDIR /app/web-staff
 # 接下来都在这个目录下操作，相当于cd，目录不存在会自动创建，之后的 COPY、RUN都以它为相对路径基准
 COPY web-staff/package.json web-staff/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry=$NPM_REGISTRY
 # ci=clean install，它的作用是：在镜像里从零全新安装一遍依赖，保证装出来的结果 100% 可复现、确定
 COPY web-staff/ ./
 # 把全部前端源码拷进去，执行 npm run build，产出静态文件到 web-staff/dist/
@@ -23,17 +29,19 @@ RUN npm run build
 # （见各自 vite.config.ts），和后端 /customer/、/staff/ 两条路由对应。
 # 写成 ARG 而不是 ENV：只有这一条 RUN 用得上，没必要留在镜像的环境变量里
 FROM node:20-alpine AS mp-customer-builder
+ARG NPM_REGISTRY=https://registry.npmjs.org/
 WORKDIR /app/mp-customer
 COPY mp-customer/package.json mp-customer/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry=$NPM_REGISTRY
 COPY mp-customer/ ./
 RUN H5_BASE=/customer/ npm run build:h5
 # 产物在 dist/build/h5（uni-app 的约定，中间那层 build 区分 build/dev）
 
 FROM node:20-alpine AS mp-staff-builder
+ARG NPM_REGISTRY=https://registry.npmjs.org/
 WORKDIR /app/mp-staff
 COPY mp-staff/package.json mp-staff/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry=$NPM_REGISTRY
 COPY mp-staff/ ./
 RUN H5_BASE=/staff/ npm run build:h5
 

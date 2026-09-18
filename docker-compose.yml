@@ -54,7 +54,13 @@ services:
 
   # ---------- 应用（后端 + 托管前端） ----------
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # 构建时用的 npm 源。默认官方源；大陆机器直连 registry.npmjs.org
+        # 常常超时（表现是 npm ci 失败、exit 1），在 .env 里写一行
+        # NPM_REGISTRY=https://registry.npmmirror.com 就能换掉
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
     # 这个服务不用现成镜像，而是用根目录的 Dockerfile现场构建
     container_name: restaurant_app
     restart: unless-stopped
