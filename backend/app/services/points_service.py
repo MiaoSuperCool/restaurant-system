@@ -162,6 +162,22 @@ class PointsService:
         )
 
     @staticmethod
+    def earn_for_payment(order, amount):
+        """收款之后消费返积分——**两条收款路径共用这一处**
+
+        员工端（`OrderService.add_payment`）和顾客端（`PublicService.pay`）
+        是两个入口，但「收了钱要返分」是同一条规则。写在两处的话迟早漂移——
+        顾客端那条一开始就漏了，登录了买东西积分也不涨，查半天才查到这里。
+
+        两条豁免：
+        - **团购券核销不走这里**（它自己建 Payment）——那笔是券抵的，不是新花的钱
+        - **停用的会员不返**——他不该再攒新的好处
+        """
+        if not order.member_id or not order.member.is_active:
+            return None
+        return PointsService.earn(order.member_id, amount, order=order)
+
+    @staticmethod
     def redeem(member_id, points_to_use, order=None, remark=''):
         """用积分抵扣——扣积分
 

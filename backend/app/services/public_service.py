@@ -16,6 +16,7 @@ from backend.app.extensions import db
 from backend.app.models import Order, Payment, Store
 from backend.app.services.audit_service import AuditService
 from backend.app.services.order_service import OrderService
+from backend.app.services.points_service import PointsService
 from backend.app.services.store_dish_service import StoreDishService
 
 RESOURCE = 'order'
@@ -38,8 +39,13 @@ class PublicService:
         return StoreDishService.get_public_menu(store_id)
 
     @staticmethod
-    def create_order(store_id, data):
-        """顾客自助下单：没有操作人，member_id 也留空（会员是二期的事）"""
+    def create_order(store_id, data, member=None):
+        """顾客自助下单
+
+        `member` 传登录的顾客（没登录就是 None）。**登录了就挂上**——
+        不挂的话这一单和这个人没关系：积分攒不到、券也用不上、
+        「我的订单」还是只能靠本地存的令牌查。没登录照样能下单，只是这些都没有。
+        """
         store = db.session.get(Store, store_id)
         if not store:
             raise NotFoundError('门店不存在')
@@ -53,6 +59,7 @@ class PublicService:
             # 和内部代点单走同一个 build_order：算价、规格校验、单号生成都是同一套
             order = OrderService.build_order(
                 store, data['items'], data['source'], data.get('remark', ''),
+                member_id=member.id if member else None,
             )
             db.session.add(order)
             db.session.commit()
@@ -101,7 +108,14 @@ class PublicService:
         其中验签那一步是关键：不验签的话，伪造一个回调就能白吃一顿。
 
         现在这套流程完全没做，`docs/设计决策.md` 和 README 里都标着「未对接」。
+
+        **顾客端只认模拟的微信支付**：现金要到店给，储值要输密码验证——
+        那些是收银台的事。以前这里来者不拒，传 `balance` 既不扣余额也不报错，
+        等于白吃一顿（钱没从任何地方出，单子却显示付了）。
         """
+        if method != Payment.METHOD_WECHAT:
+            raise BusinessError('这个入口只支持微信支付，其他方式请到店结算')
+
         if order.status == Order.STATUS_CANCELLED:
             raise BusinessError('订单已取消，不能支付')
 
@@ -124,6 +138,12 @@ class PublicService:
             )
             order.payments.append(payment)
             order.paid_amount = order.paid_amount + remaining
+
+            # **收款就返积分**——和员工端收款（`OrderService.add_payment`）
+            # 共用同一条规则。以前这条路径漏了，顾客登录着买东西，
+            # 积分一分不涨（而单子明明是挂在他名下的）
+            PointsService.earn_for_payment(order, remaining)
+
             db.session.commit()
 
             AuditService.log(

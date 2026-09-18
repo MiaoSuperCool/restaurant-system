@@ -363,3 +363,94 @@ def test_wallet_only_returns_my_own_coupons(client, admin_staff):
     assert b_wallet['pagination']['total'] == 0
     assert a_wallet['coupons'][0]['member_id'] == a['member']['id']
     assert a['member']['id'] != b['member']['id']
+
+
+# ---------- 登录之后下单 ----------
+
+def _a_dish(client):
+    """建一道没规格的菜（点单不用过规格选择），返回门店和菜品"""
+    assert client.post('/api/auth',
+                       json={'username': 'admin', 'password': 'Admin123!'}
+                       ).status_code == 200
+    store = client.post('/api/stores',
+                        json={'code': 'S001', 'name': '解放路店'}).get_json()['data']
+    category = client.post('/api/categories', json={'name': '小食'}).get_json()['data']
+    dish = client.post('/api/dishes', json={
+        'category_id': category['id'], 'name': '凉拌黄瓜', 'base_price': '12.00',
+    }).get_json()['data']
+    return store, dish
+
+
+def _public_order(client, store_id, dish_id, token=None):
+    return client.post('/api/public/orders',
+                       json={'store_id': store_id, 'source': 'dine_in',
+                             'items': [{'dish_id': dish_id, 'quantity': 2, 'option_ids': []}]},
+                       headers=_auth(token) if token else {})
+
+
+def test_order_attaches_member_when_logged_in(client, app, admin_staff):
+    """**登录了下单就挂上会员**——不挂的话这一单和这个人没关系
+
+    没登录照样能下单（这一端不强制登录），区别就在 member_id 空不空。
+    """
+    store, dish = _a_dish(client)
+    token, login = _member_token(client)
+
+    # 没登录下的单：散客单
+    guest = _public_order(client, store['id'], dish['id']).get_json()['data']
+    assert guest['member_id'] is None
+
+    # 登录之后下的单：挂在这个人名下
+    mine = _public_order(client, store['id'], dish['id'], token).get_json()['data']
+    assert mine['member_id'] == login['member']['id']
+
+
+def test_paying_earns_points(client, app, admin_staff):
+    """**付了钱就返积分**——顾客端和员工端两条收款路径共用同一条规则
+
+    这条以前是漏的：`PublicService.pay` 自己建 Payment，没走
+    `OrderService.add_payment` 里那段返积分的逻辑。结果是顾客登录着买了东西，
+    单子明明挂在他名下，积分一分不涨。
+    """
+    store, dish = _a_dish(client)
+    token, login = _member_token(client)
+    order = _public_order(client, store['id'], dish['id'], token).get_json()['data']
+
+    assert client.post(f'/api/public/orders/{order["order_no"]}/pay'
+                       f'?token={order["query_token"]}',
+                       json={'method': 'wechat'}, headers=_auth(token)).status_code == 200
+
+    account = client.get('/api/public/me', headers=_auth(token)).get_json()['data']
+    # ¥12 × 2 = ¥24，消费 1 元返 1 分
+    assert account['points']['balance'] == 24
+
+
+def test_guest_order_earns_no_points(client, app, admin_staff):
+    """散客单不返分——返给谁？"""
+    store, dish = _a_dish(client)
+    order = _public_order(client, store['id'], dish['id']).get_json()['data']
+
+    assert client.post(f'/api/public/orders/{order["order_no"]}/pay'
+                       f'?token={order["query_token"]}',
+                       json={'method': 'wechat'}).status_code == 200
+
+    with _ctx(client):
+        from backend.app.models import PointsTxn
+        assert PointsTxn.query.count() == 0
+
+
+def test_customer_cannot_pay_by_balance(client, app, admin_staff):
+    """**顾客端只认微信支付**——传储值会被明确拒掉
+
+    以前这里来者不拒：传 `balance` 既不扣余额也不报错，钱没从任何地方出，
+    单子却显示付了。**静默不扣钱比报错糟得多。**
+    """
+    store, dish = _a_dish(client)
+    token, _ = _member_token(client)
+    order = _public_order(client, store['id'], dish['id'], token).get_json()['data']
+
+    resp = client.post(f'/api/public/orders/{order["order_no"]}/pay'
+                       f'?token={order["query_token"]}',
+                       json={'method': 'balance'}, headers=_auth(token))
+    assert resp.status_code == 400
+    assert '只支持微信支付' in resp.get_json()['message']

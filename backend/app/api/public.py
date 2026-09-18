@@ -14,7 +14,7 @@
 
 已知缺口（限流、防重复提交）记在 schemas/public_schema.py 末尾。
 """
-from flask import jsonify, request
+from flask import g, jsonify, request
 from flask_smorest import Blueprint
 
 from backend.app.errors import BusinessError
@@ -24,6 +24,7 @@ from backend.app.schemas.public_schema import (
 )
 from backend.app.services import PublicService
 from backend.app.utils.api_response import api_response
+from backend.app.utils.decorators import member_optional
 
 bp = Blueprint('public', __name__, url_prefix='/api/public')
 
@@ -84,6 +85,7 @@ def menu(store_id):
 @bp.post('/orders')
 @bp.response(201, description='下单成功，返回订单和查询令牌')
 @bp.arguments(PublicOrderCreateSchema, location='json')
+@member_optional
 def create_order(data):
     """顾客自助下单
 
@@ -92,9 +94,13 @@ def create_order(data):
 
     返回里带 `query_token`，顾客端要存下来——查订单详情靠它。
 
+    **登录了就挂上会员**（`member_optional`：没登录照样能下单）：
+    挂上之后这一单才和这个人有关系——积分攒得到、券用得上、
+    「我的订单」不用再靠本地存的那串令牌。
+
     菜品已停售/本店已下架 → 400；必选规格没选 → 400；门店不存在 → 404。
     """
-    order = PublicService.create_order(data['store_id'], data)
+    order = PublicService.create_order(data['store_id'], data, member=g.get('member'))
     return jsonify(api_response(
         success=True,
         message=f'下单成功，单号 {order.order_no}',
