@@ -43,12 +43,6 @@ async function load() {
   }
 }
 
-function switchRange(value: number) {
-  if (days.value === value) return
-  days.value = value
-  load()
-}
-
 /**
  * 柱/条的长度：`base` 撑满，其余按比例（**不按固定刻度**，不然几毛钱的单看不出来）
  *
@@ -102,7 +96,10 @@ onMounted(async () => {
 <template>
   <div class="reports">
     <div class="toolbar">
-      <el-radio-group v-model="days" @change="switchRange">
+      <!-- v-model 和 @change 一起用时，**@change 触发的那一刻 v-model 已经赋好值了**。
+           所以这儿只能直接调 load，不能写「值没变就不请求」那种判断——
+           写了的话永远成立，切换一次都不生效（这个 bug 就是这么来的） -->
+      <el-radio-group v-model="days" @change="load">
         <el-radio-button v-for="item in RANGES" :key="item.days" :value="item.days">
           {{ item.label }}
         </el-radio-button>

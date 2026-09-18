@@ -14,8 +14,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 「老板」用这个标记表示拥有全部权限，避免每加一个权限码就要去改一次老板的定义
-ALL = '*'
-
 # ---------- 权限码 ----------
 # (权限码, 中文名, 分组)。分组只影响展示（分配界面按组排列），不参与判权。
 
@@ -189,9 +187,54 @@ ROLES = [
     {
         'code': 'boss',
         'name': '老板',
-        'description': '全部权限，含门店管理、全公司账号管理和审计日志',
+        'description': '全公司：门店、账号、菜单定价、报表财务、审批退款、库存查看、审计',
         'data_scope': 'all',
-        'permissions': ALL,
+        # **不是「全部权限」**——老板是最高**管理层**，不是「什么都能干的人」。
+        #
+        # 判据是「管」还是「干」：
+        #   管 = 配置、审批、看数、管人   → 给他
+        #   干 = 在柜台上动手，产生订单/收款/余额那些业务数据 → 不给
+        #
+        # 所以这里**显式列出来**，不用 `ALL`。`ALL` 那种写法本身就在说
+        # 「老板什么都干」，而这恰恰是不对的：老板不该代客点单、不该收银、
+        # 不该核销券——那是收银员和服务员的活，他偶尔下场也走别人的账号。
+        # 退款他**批**但不**发起**（`refund:apply` 是柜台上的人提的）。
+        #
+        # 显式列还有个好处：加新权限码时，这个角色不会**自动**多出什么东西。
+        # 用 `ALL` 的话，新码一上线老板立刻就有——那种「授权」没人审过。
+        'permissions': [
+            # 组织与账号
+            'store:view', 'store:manage',
+            'staff:manage', 'staff:manage:all',
+            'schedule:manage', 'system:config',
+
+            # 菜单与菜品：配菜单、定价（这是**配置**，不是柜台操作）
+            'menu:view', 'menu:create', 'menu:update', 'menu:delete',
+            'dish:price:edit', 'dish:online',
+
+            # 交易：**只看**。没有 order:create / order:receive / order:cancel / pay:collect
+            'order:view',
+
+            # 退款：看 + 批（大额只有他能批）。**没有 refund:apply**——他不发起
+            'refund:view', 'refund:approve', 'refund:approve:large',
+
+            # 营销：设计券、发券。**没有 coupon:verify**——核销是柜台的事
+            'coupon:issue', 'coupon:manage', 'campaign:manage',
+
+            # 会员：看档案、看余额、管资料。**没有 member:balance:recharge**——
+            # 充值是钱的入口，柜台操作；**也没有 points:adjust**，
+            # 补积分是门店现场处理投诉的手段
+            'member:view', 'member:balance:view', 'member:manage',
+
+            # 库存：看。入库盘点是门店的活（stock:manage 不给）
+            'stock:view',
+
+            # 报表与财务：全公司
+            'report:store', 'report:all', 'finance:view', 'finance:export',
+
+            # 对接与审计
+            'sync:view', 'audit:view',
+        ],
     },
 ]
 
@@ -238,8 +281,6 @@ def seed_rbac():
         role.sort_order = order
 
         wanted = spec['permissions']
-        if wanted == ALL:
-            wanted = list(code_to_permission)
 
         # 目录里写错权限码要当场报出来，不能静默少给一个权限——
         # 这种错会一直藏到某个店长发现自己改不了价才暴露
