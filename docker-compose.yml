@@ -55,7 +55,9 @@ services:
     container_name: restaurant_app
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "${APP_PORT:-5000}:5000"
+    # 对外端口可以换：想让别人直接敲 IP 不用带端口号，就在 .env 里写 APP_PORT=80
+    # （Docker 自己在宿主机上绑 80，不需要 root；云服务器记得在安全组放行这个端口）
     environment:
       FLASK_ENV: production
       DATABASE_URL: mysql+pymysql://root:${DB_PASSWORD:-password}@db:3306/${DB_NAME:-restaurant_system}
@@ -65,6 +67,10 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      # 这两个也必须有值：create-admin 的 --name / --mobile 带 prompt，
+      # 不给的话容器启动时会在那儿等输入，永远等不到
+      ADMIN_NAME: ${ADMIN_NAME:-系统管理员}
+      ADMIN_MOBILE: ${ADMIN_MOBILE:-13800138000}
       LOG_DIR: /app/backend/logs
     depends_on:
       db:
@@ -77,9 +83,17 @@ services:
       # 日志目录挂卷，日志不随容器删除而丢失
     command: >
       sh -c "flask db upgrade &&
-             python manage.py create-admin --username $${ADMIN_USERNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} &&
+             python manage.py create-admin --username $${ADMIN_USERNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} --name $${ADMIN_NAME} --mobile $${ADMIN_MOBILE} &&
+             python manage.py seed-rbac &&
+             python manage.py seed-demo --if-empty &&
              exec gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app"
     # command 会覆盖 Dockerfile 里的CMD。启动顺序：迁移建表 → 创建默认管理员 → 启动gunicorn。这是这个项目部署时需要的"开机自检流程"
+    # ↑ 2026-09-18 补：中间加了两步（灌权限码、灌演示数据），另外 create-admin
+    #   多传了 --name 和 --mobile——**这两个原来会卡住整个启动**：
+    #   它们带 prompt，容器里没有 stdin，Click 直接 Aborted! 退出，
+    #   后面那串 && 全都不执行，gunicorn 起不来（本机复现过，报的就是 "Aborted!"）
+    #   seed-rbac 每次都要跑（幂等，改了权限码要同步进库；不跑的话所有角色都没权限）；
+    #   seed-demo 用 --if-empty：订单不是幂等的，不加这个每次重启多 12 笔演示订单
 
 volumes:
   mysql_data:

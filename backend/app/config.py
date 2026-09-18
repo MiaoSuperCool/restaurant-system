@@ -119,9 +119,14 @@ class ProductionConfig(Config):
     DEBUG = False
     SQLALCHEMY_ECHO = False
     # 生产环境强制使用HTTPS
-    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
+    # 这里是**默认要 HTTPS、但允许关掉**：只有公网 IP、没有域名和证书的演示环境
+    # 很常见，写死 True 的话 cookie 标着 Secure 发出去，浏览器在 http 下不回传，
+    # 表现是「登录点了没反应」（POST 明明返回 200，下一个请求却是未登录）。
+    # docker-compose.yml 里那句 SESSION_COOKIE_SECURE: "false" 就是调这个开关的——
+    # 写死的时候它是个死开关，谁改都不生效
     # 代表“记住我”功能的Cookie是否只在HTTPS下传输
-    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
 
 
 class TestingConfig(Config):

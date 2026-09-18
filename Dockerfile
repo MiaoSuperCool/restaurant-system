@@ -15,7 +15,29 @@ COPY web-staff/ ./
 # 把全部前端源码拷进去，执行 npm run build，产出静态文件到 web-staff/dist/
 RUN npm run build
 
-# ---------- 阶段2：后端运行环境 ----------
+# ---------- 阶段2/3：两个小程序端的 H5 产物 ----------
+# 小程序端是 uni-app 一套代码两种产物：微信小程序（要正式 AppID，装不了真机）
+# 和 H5。线上给别人看的是 H5 这一份，所以镜像里也要有。
+#
+# **H5_BASE 是构建参数，不是运行参数**：路径前缀要写死在产物里的资源引用上
+# （见各自 vite.config.ts），和后端 /customer/、/staff/ 两条路由对应。
+# 写成 ARG 而不是 ENV：只有这一条 RUN 用得上，没必要留在镜像的环境变量里
+FROM node:20-alpine AS mp-customer-builder
+WORKDIR /app/mp-customer
+COPY mp-customer/package.json mp-customer/package-lock.json ./
+RUN npm ci
+COPY mp-customer/ ./
+RUN H5_BASE=/customer/ npm run build:h5
+# 产物在 dist/build/h5（uni-app 的约定，中间那层 build 区分 build/dev）
+
+FROM node:20-alpine AS mp-staff-builder
+WORKDIR /app/mp-staff
+COPY mp-staff/package.json mp-staff/package-lock.json ./
+RUN npm ci
+COPY mp-staff/ ./
+RUN H5_BASE=/staff/ npm run build:h5
+
+# ---------- 阶段4：后端运行环境 ----------
 FROM python:3.12-slim
 # 以 python 3.12 的slim（精简版）镜像为基底。前面 stage 1 那台"装了Node 的临时机器"使命完成不要了——这就是多阶段构建省体积的关键
 WORKDIR /app
@@ -35,6 +57,9 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # 前端产物必须放在 /app/web-staff/dist（backend/app/__init__.py 的 FRONTEND_DIST 按相对路径计算）
 COPY backend/ ./backend/
 COPY --from=web-staff-builder /app/web-staff/dist ./web-staff/dist
+# 两个小程序端的 H5 产物：目录名要和后端里的 CUSTOMER_DIST / STAFF_DIST 对上
+COPY --from=mp-customer-builder /app/mp-customer/dist/build/h5 ./mp-customer/dist/build/h5
+COPY --from=mp-staff-builder /app/mp-staff/dist/build/h5 ./mp-staff/dist/build/h5
 
 WORKDIR /app/backend
 EXPOSE 5000

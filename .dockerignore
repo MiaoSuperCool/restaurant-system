@@ -13,7 +13,9 @@ backend/logs/
 web-staff/node_modules/
 web-staff/dist/
 mp-staff/node_modules/
+mp-staff/dist/
 mp-customer/node_modules/
+mp-customer/dist/
 
 # 日志与临时文件
 *.log

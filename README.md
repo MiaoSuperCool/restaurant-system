@@ -9,7 +9,9 @@
 一套 Flask 后端 + 三个客户端（内部人员网页端 Vue3、内部人员小程序端 uni-app、顾客小程序端 uni-app），
 三端共用同一套业务逻辑和权限体系——**三个客户端现在都有了**。
 一期（核心交易闭环）和二期（会员资产 + 老系统共存）**都已收尾**，
-三期（多角色管理与经营分析）在做，见下面「已经能跑通的」。
+三期（多角色管理与经营分析）**做到「排班」为止**——剩下的（活动、财务导出、
+红黑榜、库存）停下来了，先转部署上线，理由和「原样等着的那份清单」见
+[docs/分期工程.md](docs/分期工程.md)。各模块现在能跑到什么程度见下面「已经能跑通的」。
 
 <img src="docs/screenshots/dashboard.png" width="820" alt="首页看板" />
 
@@ -58,6 +60,30 @@ cd ../mp-customer && npm install && npm run dev:h5   # 顾客小程序（H5 版�
 
 > 第 3 步的 `flask db upgrade` 只是建表；**没有 `seed-rbac` 的话所有角色都没有权限**，
 > 除了超级管理员谁都干不了活。
+
+## 部署上线
+
+上面那套是**本机开发**的跑法（三个 vite dev server + 一个 flask run）。
+要让别人也能点开看，用 Docker：一台云服务器，三条命令，一个地址带三个入口。
+
+```bash
+git clone <仓库地址> && cd restaurant-system
+echo 'DB_PASSWORD=...' >> .env && echo 'SECRET_KEY=...' >> .env   # SECRET_KEY 用 openssl rand -hex 32
+docker compose up -d --build
+```
+
+```
+http://<服务器地址>/            内部人员网页端
+http://<服务器地址>/customer/   顾客端（手机打开）
+http://<服务器地址>/staff/      员工端（手机打开）
+```
+
+两个小程序端放的是 **H5 版**——真机要正式 AppID + 备案域名，求职作品没有这些，
+而 H5 是同一套代码编译出来的，界面和交互一样。
+
+完整的步骤、开机自检流程（为什么 `seed-rbac` 不能省）、
+加域名和 HTTPS 的 nginx 配置、以及**哪些验过哪些没验**，
+见 [docs/部署.md](docs/部署.md)。
 
 ## 演示账号
 

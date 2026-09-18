@@ -14,19 +14,67 @@ from backend.app.errors import BusinessError
 from backend.app.extensions import cache, cors, csrf, db, login_manager, migrate
 from backend.app.utils.api_response import api_response
 
-# 内部人员网页端的构建产物目录（backend/app/ 上两级 = 项目根/web-staff/dist）
-# 注意：这里只管 web-staff 这一个前端；两个小程序端（mp-staff / mp-customer）
-# 由微信客户端直接访问 API，不经过本函数托管
-FRONTEND_DIST = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'web-staff', 'dist'
-)
+# 三个前端的构建产物目录（`backend/app/` 上两级 = 项目根）
+#
+# 小程序那两个是 uni-app 的 H5 产物：**同一套代码还编译了微信小程序版**，
+# 只是求职作品没有正式 AppID，真机装不了，所以线上给别人看的是 H5 版。
+# 两个端在同一个域名下各占一段路径（`/customer/`、`/staff/`），
+# 构建时由 `H5_BASE` 决定（见各自的 vite.config.ts）
+_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+FRONTEND_DIST = os.path.join(_ROOT, 'web-staff', 'dist')
+CUSTOMER_DIST = os.path.join(_ROOT, 'mp-customer', 'dist', 'build', 'h5')
+STAFF_DIST = os.path.join(_ROOT, 'mp-staff', 'dist', 'build', 'h5')
+
+
+def _serve_spa(dist_dir, path=''):
+    """托一个 SPA：真实文件直接给，其余路径一律回它的 index.html
+
+    **每个前端都要有这一句**（而不是只给根路径），因为它们用的都是前端路由：
+    直接敲 `/#/pages/...` 或者刷新页面时，路径是浏览器发给后端的，
+    后端不兜住就是 404。
+
+    `send_from_directory` 自己会挡掉 `..` 越界，不用手写校验。
+    """
+    if not os.path.isdir(dist_dir):
+        # 没打包进来（本地开发时就是这种情况：前端跑在 vite 上，不该走后端）。
+        # 明确说一句，比一个光秃秃的 404 好查
+        return jsonify(api_response(
+            success=False,
+            message=f'这个前端的构建产物不在（{os.path.basename(os.path.dirname(dist_dir))}）——'
+                    f'开发时请用 npm run dev，部署时请用仓库根的 Dockerfile 构建镜像',
+        )), 404
+    target = os.path.join(dist_dir, path)
+    if path and os.path.isfile(target):
+        return send_from_directory(dist_dir, path)
+    return send_from_directory(dist_dir, 'index.html')
 
 
 def register_frontend_routes(app):
-    """生产环境托管 Vue 构建产物：/ 和所有非接口路径都返回 index.html"""
+    """生产环境托管构建产物：三个前端各占一段路径
+
+        /           内部人员网页端（web-staff）
+        /customer/  顾客端（mp-customer 的 H5 版）
+        /staff/     员工端（mp-staff 的 H5 版）
+
+    **同一个域名、同一个 Flask**：前端之间没有跨域问题，别人也只需要记一个地址。
+    路径前缀是构建时就写死在产物里的（`H5_BASE`），这里只管照着托管。
+    """
     @app.route('/')
     def serve_index():
-        return send_from_directory(FRONTEND_DIST, 'index.html')
+        return _serve_spa(FRONTEND_DIST)
+
+    # 顾客端 / 员工端：**先注册带前缀的，再注册兜底的 `/<path:path>`**。
+    # Werkzeug 按「静态部分更长的规则优先」匹配，所以顺序其实不影响正确性，
+    # 但把具体的写在前面，读代码的人不用去想那条规则
+    @app.route('/customer/')
+    @app.route('/customer/<path:path>')
+    def serve_customer(path=''):
+        return _serve_spa(CUSTOMER_DIST, path)
+
+    @app.route('/staff/')
+    @app.route('/staff/<path:path>')
+    def serve_staff(path=''):
+        return _serve_spa(STAFF_DIST, path)
 
     @app.route('/<path:path>')
     def serve_spa(path):

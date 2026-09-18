@@ -3,6 +3,12 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [uni()],
+  // 部署时的路径前缀：三个前端塞在同一个域名下，各占一段
+  // （/ = 内部人员网页端、/customer/ = 这里、/staff/ = 员工端）。
+  //
+  // **只有生产构建才带前缀**：开发时 `npm run dev:h5` 还是 http://localhost:5174/，
+  // 不用为了改一行代码去记一个前缀。Dockerfile 里构建时传 H5_BASE。
+  base: process.env.H5_BASE || '/',
   server: {
     // 5173 被 web-staff 占着，这里错开
     port: 5174,

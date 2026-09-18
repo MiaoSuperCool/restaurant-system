@@ -94,13 +94,16 @@ def seed_rbac_command():
 # 灌演示数据
 @cli.command('seed-demo')
 @click.option('--reset', is_flag=True, help='先清空已有的订单/支付数据再重建')
-def seed_demo_command(reset):
+@click.option('--if-empty', is_flag=True,
+              help='库里一家门店都没有才灌——给容器启动用（反复重启不会越灌越多）')
+def seed_demo_command(reset, if_empty):
     """灌演示数据：6 家门店、一套完整菜单、各角色账号、一批订单
 
     别人 clone 下来跑一遍这个，系统里就有东西可看了。
 
     幂等：门店/菜品/账号已存在就跳过，可以反复执行；
-    订单每次都会新增，要重来一遍加 --reset。
+    **订单除外**（每次执行都新增 12 笔）。所以容器启动脚本里要用 `--if-empty`：
+    不然每次重启都多 12 笔订单，重启几次演示数据就花了。
 
     注意先后顺序：新建库要先 flask db upgrade → flask seed-rbac → 再灌演示数据。
     """
@@ -108,6 +111,12 @@ def seed_demo_command(reset):
         click.confirm('⚠️ --reset 会删掉所有订单、支付和会员记录，确定吗？', abort=True)
 
     from backend.app.demo import DEMO_PASSWORD, seed_demo
+
+    if if_empty:
+        from backend.app.models import Store
+        if Store.query.first() is not None:
+            click.echo('⏭️  库里已经有门店了，跳过演示数据（--if-empty）')
+            return
 
     stats = seed_demo(reset=reset)
     click.echo(
