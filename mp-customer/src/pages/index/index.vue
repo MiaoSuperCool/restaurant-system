@@ -433,7 +433,9 @@ onShow(() => {
   left: 0;
   right: 0;
   top: 0;
-  bottom: 0;
+  /* 同 menu.vue 里那条：这一页也是 tab 页，弹层贴到屏幕最底下会被 H5 的
+     tabBar 压住一截。`--window-bottom` 小程序里是 0、H5 里是 tabBar 的高度 */
+  bottom: var(--window-bottom);
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: flex-end;

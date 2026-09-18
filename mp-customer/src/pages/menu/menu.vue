@@ -686,7 +686,12 @@ onShow(() => {
   left: 0;
   right: 0;
   top: 0;
-  bottom: 0;
+  /* **不能用 bottom: 0**（和下面的 .cart-bar 同一条道理）：
+     这一页是 tab 页，H5 里 tabBar 是个 DOM 元素、盖在页面上层，
+     弹层贴到屏幕最底下的话，底部那截（勾规格的地方和「加入购物车」按钮）
+     会被 tabBar 压住。`--window-bottom` 小程序里是 0、H5 里是 tabBar 的高度，
+     弹层从 tabBar 上沿开始，两边都不会压 */
+  bottom: var(--window-bottom);
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: flex-end;
