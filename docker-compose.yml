@@ -63,7 +63,10 @@ services:
       DATABASE_URL: mysql+pymysql://root:${DB_PASSWORD:-password}@db:3306/${DB_NAME:-restaurant_system}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me}
-      SESSION_COOKIE_SECURE: "false"
+      # 挂了 HTTPS 之后要把它改成 true（在仓库根的 .env 里写，别改这里）——
+      # nginx 到容器这一段是 http，容器自己看不出外面是不是 https，
+      # 所以「cookie 要不要带 Secure」只能靠这个开关告诉它
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
