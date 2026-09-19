@@ -40,6 +40,16 @@ services:
       retries: 5
       # 健康检查：compose 定期执行这条命令判断 MySQL是否真正就绪。
       # MySQL 刚启动时要花几秒初始化，此时连接会失败——健康检查就是给下面 app 的 depends_on用的
+    command: --performance-schema=OFF --innodb-buffer-pool-size=64M
+    # **小内存机器的保命参数**，两个都是 MySQL 8 本来就支持的启动选项：
+    #   performance-schema=OFF   性能采集表，默认开着要吃掉两百来兆，
+    #                            演示环境根本没人看它
+    #   innodb-buffer-pool-size  默认 128M，演示数据一共几十行，64M 绰绰有余
+    # 一台 1.6G 的机器实测：不加这两条，MySQL 容器驻留 ~450M，
+    # 加上 MySQL 的 gunicorn 4 个 worker（每个都要把 Flask 应用单独加载一遍），
+    # 整个机器只剩几十兆可用，一波请求就卡死不响应
+    #
+    # 内存够的机器删掉这一行就行（比如 4G 以上）
 
 
   # ---------- Redis 缓存 ----------
