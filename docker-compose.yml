@@ -88,6 +88,12 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-系统管理员}
       ADMIN_MOBILE: ${ADMIN_MOBILE:-13800138000}
       LOG_DIR: /app/backend/logs
+      # gunicorn 的进程数。**小内存机器要调小**：每个 worker 都要把整个 Flask 应用
+      # 单独加载一遍（八九十到一百多兆），4 个就是四五百兆。
+      # 1.6G 那台就是被这个加上 MySQL 压垮的（表现是整个机器不响应、ssh 都进不去，
+      # 只能去云控制台强制重启）。核对一下：free -h 里 available 有多少，
+      # 除以单个 worker 的内存再留一半余量。
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
     depends_on:
       db:
         condition: service_healthy
@@ -102,7 +108,7 @@ services:
              python manage.py create-admin --username $${ADMIN_USERNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} --name $${ADMIN_NAME} --mobile $${ADMIN_MOBILE} &&
              python manage.py seed-rbac &&
              python manage.py seed-demo --if-empty &&
-             exec gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app"
+             exec gunicorn -w $${GUNICORN_WORKERS} -b 0.0.0.0:5000 wsgi:app"
     # command 会覆盖 Dockerfile 里的CMD。启动顺序：迁移建表 → 创建默认管理员 → 启动gunicorn。这是这个项目部署时需要的"开机自检流程"
     # ↑ 2026-09-18 补：中间加了两步（灌权限码、灌演示数据），另外 create-admin
     #   多传了 --name 和 --mobile——**这两个原来会卡住整个启动**：
