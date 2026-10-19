@@ -124,15 +124,29 @@ STAFF = [
     ('wulin_fuwuyuan', '郑服务', 'waiter', 'S003', 'part_time', False),
 ]
 
-# 菜品配图：路径相对前端的 public/（web-staff 直接拿它当卡片背景）
+# 菜品配图：路径相对前端的 public/（web-staff 拿它当卡片背景，顾客端菜单也用）
 #
 # 单独一张表而不是塞进 DISHES 的元组里——那样每个分类都要跟着改结构，
-# 而配图本来就只给个别菜用（其余菜品走默认的纯色卡片）
+# 配图是后补的信息，和菜品定义本身解耦（兜底还在：没配图的菜走纯色卡片）
 #
-# 原图要先跑 `scripts/optimize_dish_images.py` 压成 WebP（缩到 800px、59KB 左右），
+# 原图要先跑 `scripts/optimize_dish_images.py` 压成 WebP（缩到 800px、60KB 以内），
 # 别把几 MB 的原图直接丢进 public/
 DISH_IMAGES = {
     '红烧牛肉面': '/dishes/beef-noodle.webp',
+    '番茄鸡蛋面': '/dishes/tomato-egg-noodle.webp',
+    '雪菜肉丝面': '/dishes/xuecai-pork-noodle.webp',
+    '金牌猪软骨面': '/dishes/pork-cartilage-noodle.webp',
+    '台式卤肉饭': '/dishes/braised-pork-rice.webp',
+    '香煎鸡腿饭': '/dishes/chicken-leg-rice.webp',
+    '咖喱牛肉饭': '/dishes/curry-beef-rice.webp',
+    '鲜肉小笼包': '/dishes/soup-dumplings.webp',
+    '手工煎饺': '/dishes/fried-dumplings.webp',
+    '凉拌黄瓜': '/dishes/cucumber-salad.webp',
+    '可乐': '/dishes/cola.webp',
+    '酸梅汤': '/dishes/sour-plum-drink.webp',
+    '现磨豆浆': '/dishes/soy-milk.webp',
+    '商务午市套餐': '/dishes/business-lunch.webp',
+    '商务双人餐': '/dishes/business-dinner.webp',
 }
 
 MEMBERS = [

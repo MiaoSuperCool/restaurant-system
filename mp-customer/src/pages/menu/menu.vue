@@ -50,8 +50,17 @@
           v-for="dish in visibleDishes"
           :key="dish.dish_id"
           class="dish-card"
+          :class="{ 'has-photo': !!dish.image }"
           @tap="pickDish(dish)"
         >
+          <!-- 配图当卡片背景：模糊 + 压淡，它是氛围不是照片，
+               文字压在上面照常看（和收银台的点单页同一种效果） -->
+          <image
+            v-if="dish.image"
+            class="dish-bg"
+            :src="dishImageUrl(dish.image)"
+            mode="aspectFill"
+          />
           <view class="dish-main">
             <text class="dish-name">{{ dish.name }}</text>
             <text v-if="dish.description" class="dish-desc">{{ dish.description }}</text>
@@ -225,6 +234,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUsableCoupons } from '@/api/member'
 import { createOrder, getMenu } from '@/api/public'
+import { dishImageUrl } from '@/api/request'
 import type { DishOptionGroup, MenuRow, UsableCoupon } from '@/api/types'
 import { addToCart, cart, cartCount, cartTotal, changeQuantity, clearCart } from '@/stores/cart'
 import { isLoggedIn } from '@/stores/memberAuth'
@@ -563,7 +573,7 @@ onShow(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
+  background: var(--rs-paper);
 }
 
 .topbar {
@@ -571,31 +581,31 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 32rpx;
-  background: #fff;
+  background: var(--rs-surface);
 }
 
 .store-name {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .my-orders {
   font-size: 26rpx;
-  color: #8a8a8a;
+  color: var(--rs-ink-2);
 }
 
 .search-row {
   display: flex;
   align-items: center;
   padding: 0 32rpx 20rpx;
-  background: #fff;
+  background: var(--rs-surface);
 }
 
 .search-input {
   flex: 1;
   height: 64rpx;
-  background: #f5f5f5;
+  background: var(--rs-fill);
   border-radius: 32rpx;
   padding: 0 28rpx;
   font-size: 26rpx;
@@ -605,11 +615,11 @@ onShow(() => {
   margin-left: 16rpx;
   padding: 8rpx 12rpx;
   font-size: 28rpx;
-  color: #8a8a8a;
+  color: var(--rs-ink-2);
 }
 
 .category-bar {
-  background: #fff;
+  background: var(--rs-surface);
   white-space: nowrap;
   padding-bottom: 16rpx;
 }
@@ -625,16 +635,17 @@ onShow(() => {
   margin-right: 16rpx;
   border-radius: 32rpx;
   font-size: 26rpx;
-  background: #f2f2f2;
-  color: #1f1f1f;
+  background: var(--rs-fill);
+  color: var(--rs-ink);
   /* 分类栏是横向滚动的，**不能让它们被挤窄**：`.category-row` 是 flex 容器，
      不写这条的话所有分类会一起挤进屏幕宽度，「招牌面食」会折成两行。
      （这行是补的——仓库里那张旧截图就已经折着了，一直没人发现） */
   flex-shrink: 0;
 }
 
+/* 选中的分类是糖色实底——「正在看哪一栏」是点餐页的锚点 */
 .category.active {
-  background: #1f1f1f;
+  background: var(--rs-primary);
   color: #fff;
 }
 
@@ -650,7 +661,13 @@ onShow(() => {
 }
 
 .dish-card {
-  background: #fff;
+  position: relative;
+  z-index: 0;
+  /* 上面这行：卡片自己开一个层叠上下文——配图层的 z-index 从此只在本卡内部比大小，
+     内容不会再「越级」盖到底部的结算条上（踩过：菜品的描述文字骑在结算条上） */
+  overflow: hidden;
+  background: var(--rs-surface);
+  border: 1rpx solid var(--rs-border);
   border-radius: 16rpx;
   padding: 28rpx;
   margin-bottom: 16rpx;
@@ -659,7 +676,26 @@ onShow(() => {
 }
 
 .dish-card:active {
-  background: #fafafa;
+  background: var(--rs-fill);
+}
+
+/* 配图那层往四边各探出一点：模糊之后边缘铺不满会露出浅边 */
+.dish-bg {
+  position: absolute;
+  left: -24rpx;
+  top: -24rpx;
+  width: calc(100% + 48rpx);
+  height: calc(100% + 48rpx);
+  opacity: 0.35;
+  filter: blur(6px);
+  z-index: 0;
+}
+
+/* 卡片内容压在配图那层上面（没有配图的卡片不受影响） */
+.dish-card .dish-main,
+.dish-card .dish-add {
+  position: relative;
+  z-index: 1;
 }
 
 .dish-main {
@@ -671,12 +707,12 @@ onShow(() => {
 .dish-name {
   font-size: 30rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .dish-desc {
   font-size: 24rpx;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
   margin-top: 8rpx;
 }
 
@@ -689,13 +725,13 @@ onShow(() => {
 .dish-price {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-primary);
 }
 
 .dish-tag {
   font-size: 22rpx;
-  color: #8a8a8a;
-  border: 1rpx solid #e0e0e0;
+  color: var(--rs-ink-2);
+  border: 1rpx solid var(--rs-border);
   border-radius: 6rpx;
   padding: 2rpx 10rpx;
   margin-left: 16rpx;
@@ -705,7 +741,7 @@ onShow(() => {
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: #1f1f1f;
+  background: var(--rs-primary);
   color: #fff;
   font-size: 36rpx;
   display: flex;
@@ -721,7 +757,7 @@ onShow(() => {
   padding: 120rpx 40rpx;
   text-align: center;
   font-size: 28rpx;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
 }
 
 /* ---------- 底部购物车栏 ---------- */
@@ -736,7 +772,9 @@ onShow(() => {
      `--window-bottom` 是 uni-app 给的变量：小程序里是 0，H5 里是 tabBar 的高度 */
   bottom: var(--window-bottom);
   height: 110rpx;
-  background: #1f1f1f;
+  background: var(--rs-lacquer);
+  z-index: 10;
+  /* 上面这行：结算条必须永远压在滚上来的菜品卡上面（弹层用的 mask 是 100） */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -753,8 +791,8 @@ onShow(() => {
   min-width: 44rpx;
   height: 44rpx;
   border-radius: 22rpx;
-  background: #fff;
-  color: #1f1f1f;
+  background: var(--rs-cream);
+  color: var(--rs-lacquer);
   font-size: 24rpx;
   display: flex;
   align-items: center;
@@ -763,28 +801,30 @@ onShow(() => {
 }
 
 .cart-badge.placeholder {
-  background: #4a4a4a;
-  color: #9a9a9a;
+  background: rgba(246, 238, 221, 0.14);
+  color: var(--rs-cream-2);
 }
 
 .cart-total {
-  color: #fff;
+  color: var(--rs-cream);
   font-size: 34rpx;
   font-weight: 600;
   margin-left: 24rpx;
 }
 
+/* 去结算：漆底上的金按钮——整页最该被按的那个 */
 .cart-action {
-  color: #1f1f1f;
-  background: #fff;
+  color: var(--rs-lacquer);
+  background: var(--rs-primary-bright);
   font-size: 28rpx;
+  font-weight: 600;
   padding: 16rpx 44rpx;
   border-radius: 40rpx;
 }
 
 .cart-action.disabled {
-  background: #4a4a4a;
-  color: #9a9a9a;
+  background: rgba(246, 238, 221, 0.12);
+  color: var(--rs-cream-2);
 }
 
 /* ---------- 弹层 ---------- */
@@ -800,7 +840,7 @@ onShow(() => {
      会被 tabBar 压住。`--window-bottom` 小程序里是 0、H5 里是 tabBar 的高度，
      弹层从 tabBar 上沿开始，两边都不会压 */
   bottom: var(--window-bottom);
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(58, 42, 30, 0.5);
   display: flex;
   align-items: flex-end;
   z-index: 100;
@@ -808,7 +848,7 @@ onShow(() => {
 
 .sheet {
   width: 100%;
-  background: #fff;
+  background: var(--rs-surface);
   border-radius: 24rpx 24rpx 0 0;
   padding-bottom: env(safe-area-inset-bottom);
   max-height: 80vh;
@@ -821,16 +861,16 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 28rpx 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
+  border-bottom: 1rpx solid var(--rs-border);
   font-size: 28rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .clear {
   font-size: 26rpx;
   font-weight: 400;
-  color: #8a8a8a;
+  color: var(--rs-ink-2);
 }
 
 .sheet-list {
@@ -842,7 +882,7 @@ onShow(() => {
   display: flex;
   align-items: center;
   padding: 24rpx 0;
-  border-bottom: 1rpx solid #f5f5f5;
+  border-bottom: 1rpx solid var(--rs-border);
 }
 
 .cart-item-main {
@@ -853,18 +893,18 @@ onShow(() => {
 
 .cart-item-name {
   font-size: 28rpx;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .cart-item-options {
   font-size: 22rpx;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
   margin-top: 6rpx;
 }
 
 .cart-item-price {
   font-size: 28rpx;
-  color: #1f1f1f;
+  color: var(--rs-ink);
   margin-right: 24rpx;
 }
 
@@ -880,8 +920,8 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   font-size: 32rpx;
-  color: #1f1f1f;
-  border: 1rpx solid #e5e5e5;
+  color: var(--rs-ink);
+  border: 1rpx solid var(--rs-border);
   border-radius: 50%;
 }
 
@@ -904,19 +944,19 @@ onShow(() => {
   margin-right: 16rpx;
   border-radius: 32rpx;
   font-size: 26rpx;
-  background: #f2f2f2;
-  color: #1f1f1f;
+  background: var(--rs-fill);
+  color: var(--rs-ink);
 }
 
 .source.active {
-  background: #1f1f1f;
+  background: var(--rs-primary);
   color: #fff;
 }
 
 .remark-input {
   margin-top: 20rpx;
   height: 80rpx;
-  background: #f7f7f7;
+  background: var(--rs-fill);
   border-radius: 12rpx;
   padding: 0 24rpx;
   font-size: 26rpx;
@@ -927,7 +967,7 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 28rpx 32rpx;
-  border-top: 1rpx solid #f0f0f0;
+  border-top: 1rpx solid var(--rs-border);
   margin-top: 24rpx;
 }
 
@@ -944,19 +984,19 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 24rpx 32rpx;
-  border-top: 1rpx solid #f0f0f0;
+  border-top: 1rpx solid var(--rs-border);
   font-size: 26rpx;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .coupon-arrow {
-  color: #c0c0c0;
+  color: var(--rs-ink-3);
   font-size: 30rpx;
 }
 
 .coupon-box {
   padding: 20rpx 32rpx 0;
-  border-top: 1rpx solid #f0f0f0;
+  border-top: 1rpx solid var(--rs-border);
 }
 
 .coupon-head {
@@ -968,12 +1008,12 @@ onShow(() => {
 
 .coupon-title {
   font-size: 26rpx;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .coupon-hint {
   font-size: 24rpx;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
 }
 
 /* 一行一张券：点一下选它，再点一下取消。
@@ -985,14 +1025,14 @@ onShow(() => {
   padding: 18rpx 24rpx;
   margin-bottom: 12rpx;
   border-radius: 12rpx;
-  border: 1rpx solid #eee;
+  border: 1rpx solid var(--rs-border);
   font-size: 26rpx;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .coupon-item.active {
-  border-color: #1f1f1f;
-  background: #f7f7f7;
+  border-color: var(--rs-primary);
+  background: var(--rs-primary-soft);
 }
 
 .coupon-value {
@@ -1002,7 +1042,7 @@ onShow(() => {
 .sheet-total {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-primary);
 }
 
 /* 用了券才出现：把原价摆在下面，不然"合计怎么少了"要用户自己算 */
@@ -1010,12 +1050,12 @@ onShow(() => {
   display: block;
   margin-top: 4rpx;
   font-size: 22rpx;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
   text-decoration: line-through;
 }
 
 .submit {
-  background: #1f1f1f;
+  background: var(--rs-primary);
   color: #fff;
   font-size: 28rpx;
   padding: 18rpx 48rpx;
@@ -1023,7 +1063,8 @@ onShow(() => {
 }
 
 .submit.disabled {
-  background: #9a9a9a;
+  background: var(--rs-border);
+  color: var(--rs-ink-3);
 }
 
 /* ---------- 规格选择 ---------- */
@@ -1040,7 +1081,7 @@ onShow(() => {
 .picker-desc {
   font-size: 24rpx;
   font-weight: 400;
-  color: #a0a0a0;
+  color: var(--rs-ink-3);
   margin-top: 8rpx;
 }
 
@@ -1057,25 +1098,25 @@ onShow(() => {
 .group-name {
   font-size: 28rpx;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--rs-ink);
 }
 
 .required {
   font-size: 22rpx;
-  color: #c45656;
+  color: var(--rs-danger);
   margin-left: 12rpx;
 }
 
 .group-type {
   font-size: 22rpx;
-  color: #b0b0b0;
+  color: var(--rs-ink-3);
   margin-left: 12rpx;
 }
 
 /* 「连点可加多份」：比「多选」再淡一点，别抢主信息的注意力 */
 .group-hint {
   font-size: 22rpx;
-  color: #c0c0c0;
+  color: var(--rs-ink-3);
   margin-left: 16rpx;
 }
 
@@ -1091,12 +1132,12 @@ onShow(() => {
   margin: 0 16rpx 16rpx 0;
   border-radius: 32rpx;
   font-size: 26rpx;
-  background: #f2f2f2;
-  color: #1f1f1f;
+  background: var(--rs-fill);
+  color: var(--rs-ink);
 }
 
 .option.active {
-  background: #1f1f1f;
+  background: var(--rs-primary);
   color: #fff;
 }
 
@@ -1117,12 +1158,12 @@ onShow(() => {
 }
 
 .extra {
-  color: #c45656;
+  color: var(--rs-danger);
   font-size: 22rpx;
 }
 
 .option.active .extra {
-  color: #ffb0b0;
+  color: var(--rs-cream);
 }
 
 .picker-qty {

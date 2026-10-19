@@ -30,6 +30,29 @@ baseUrl = ''
 
 export const API_BASE_URL = baseUrl
 
+/**
+ * 菜品配图的完整地址
+ *
+ * 后端给的是 `/dishes/xxx.webp` 这样的相对路径：
+ * - H5：拼上页面 origin（开发走 vite 代理、上线和后端同源）
+ * - 小程序：没有「同源」这个概念，必须拼上后端的完整地址
+ *
+ * **H5 不能直接返回 `/dishes/...`**：uni-app 的 `<image>` 会把以 `/` 开头的
+ * src 当成页面相对路径，再拼一次 router base——部署在 `/customer/` 下时会变成
+ * `/customer/dishes/...`，后端没有这个文件（SPA 兜底返回 index.html），
+ * 图片就静默不显示。给带协议头的绝对地址，图片组件才会原样使用。
+ */
+let imageBase = API_BASE_URL
+// #ifdef H5
+imageBase = window.location.origin
+// #endif
+
+export function dishImageUrl(path: string): string {
+  if (!path) return ''
+  if (path.startsWith('http')) return path
+  return imageBase + path
+}
+
 /** 顾客 token 在本地存储里的 key */
 export const TOKEN_KEY = 'mp_customer_token'
 
